@@ -2974,7 +2974,7 @@ const KK={
 'Проверка билетов':'Билеттерді тексеру','Сеанс':'Сеанс','Прошли в зал':'Залға кіргендер','📷 Сканировать камерой':'📷 Камерамен сканерлеу','QR-код или номер билета BZT-XXXX-XXXX':'QR-код немесе билет нөмірі BZT-XXXX-XXXX','Проверить':'Тексеру',
 'Для демо: билеты этого сеанса':'Демо үшін: осы сеанстың билеттері','Нажмите «Скан», чтобы сымитировать наведение камеры на QR.':'Камераны QR-ға бағыттауды имитациялау үшін «Скан» басыңыз.','Скан':'Скан','Нет проданных билетов':'Сатылған билет жоқ',
 '✓ ПРОХОД РАЗРЕШЁН':'✓ КІРУГЕ РҰҚСАТ','Билет действителен':'Билет жарамды','✗ УЖЕ ИСПОЛЬЗОВАН':'✗ БҰРЫН ПАЙДАЛАНЫЛҒАН','✗ ВОЗВРАЩЁН':'✗ ҚАЙТАРЫЛҒАН','✗ ОТМЕНЁН':'✗ ТОҚТАТЫЛҒАН','⚠ ДРУГОЙ СЕАНС':'⚠ БАСҚА ЗАЛ','✗ БИЛЕТ НЕ НАЙДЕН':'✗ БИЛЕТ ТАБЫЛМАДЫ',
-'Камера в этом браузере не поддерживается в демо. В рабочей версии используется сканер @zxing, который работает на iPhone и Android. Используйте ввод кода ниже.':'Бұл браузерде камера демода қолдау таппайды. Жұмыс нұсқасында iPhone мен Android-та істейтін сканер қолданылады. Төмендегі код енгізуді пайдаланыңыз.','Остановить камеру':'Камераны тоқтату',
+'Камера в этом браузере не поддерживается в демо. В рабочей версии используется сканер @zxing, который работает на iPhone и Android. Используйте ввод кода ниже.':'Бұл браузерде камера демода қолдау таппайды. Жұмыс нұсқасында iPhone мен Android-та істейтін сканер қолданылады. Төмендегі код енгізуді пайдаланыңыз.','Остановить камеру':'Камераны тоқтату','Наведите камеру на QR-код билета':'Камераны билеттің QR-кодына бағыттаңыз','Камера недоступна в этом браузере. Введите номер билета вручную.':'Бұл браузерде камера қолжетімсіз. Билет нөмірін қолмен енгізіңіз.','Сканер не загрузился. Введите номер билета вручную.':'Сканер жүктелмеді. Билет нөмірін қолмен енгізіңіз.','Нет доступа к камере. Разрешите камеру для этого сайта в настройках браузера и нажмите кнопку ещё раз.':'Камераға рұқсат жоқ. Браузер баптауларында осы сайтқа камераны рұқсат етіп, батырманы қайта басыңыз.',
 'Вход для сотрудника':'Қызметкер кіруі','Вход для администратора':'Әкімші кіруі','В рабочей версии — вход по email и паролю, роли ADMIN и STAFF. В демо выберите роль:':'Жұмыс нұсқасында — email мен құпиясөз арқылы кіру, ADMIN және STAFF рөлдері. Демода рөлді таңдаңыз:','Войти как администратор':'Әкімші ретінде кіру','Войти как сотрудник':'Қызметкер ретінде кіру',
 'Этот зал временно не работает. Выберите другой зал.':'Бұл зал уақытша жұмыс істемейді. Басқа залды таңдаңыз.','Страница не найдена':'Бет табылмады','На главную':'Басты бетке',
 'Другой покупатель оплатил свои места':'Басқа сатып алушы орындарын төледі','Свободных мест не хватает':'Бос орын жеткіліксіз','Нет сеансов в продаже':'Сатылымда сеанс жоқ','Сеансы':'Сеанстар'
@@ -3560,17 +3560,37 @@ function scanResHTML(){
   return `<div class="result ${M[0]}"><div class="big">${M[1]}</div>${i?`<div>«${esc(i.title)}» · ${fmtDate(i.startsAt)} ${fmtTime(i.startsAt)}</div><div style="font-size:24px;font-weight:800;margin:6px 0">${esc(i.hall)} · Ряд ${i.r} · Место ${i.n}</div><div class="small muted">${i.number} · статус: ${ru(i.status)}${i.checkedAt?' · вход в '+new Date(i.checkedAt).toTimeString().slice(0,5):''}</div>`:''}</div>`;
 }
 function doScan(v){
-  if(LIVE)return doScanLive(v);scanRes=S.validate(v,ui.staffScr,true,actor());const el=$('#scanRes');if(navigator.vibrate)try{navigator.vibrate(scanRes.res==='ACCEPTED'?40:[60,40,60])}catch(e){}render()}
+  if(LIVE)return doScanLive(v);
+  scanRes=S.validate(v,ui.staffScr,true,actor());if(navigator.vibrate)try{navigator.vibrate(scanRes.res==='ACCEPTED'?40:[60,40,60])}catch(e){}
+  const box=$('#scanRes');if(camStream&&box){box.innerHTML=scanResHTML();tr(box)}else render();
+}
 async function startCam(){
   const w=$('#camwrap');
-  if(!('BarcodeDetector' in window)||!navigator.mediaDevices){w.innerHTML='<div class="card mb small">Камера в этом браузере не поддерживается в демо. В рабочей версии используется сканер @zxing, который работает на iPhone и Android. Используйте ввод кода ниже.</div>';return}
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){w.innerHTML='<div class="card mb small">Камера недоступна в этом браузере. Введите номер билета вручную.</div>';tr(w);return}
   try{
-    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-    w.innerHTML='<video id="cam" playsinline muted></video><button class="btn sm mt mb" onclick="stopCam()">Остановить камеру</button>';
+    stopCam();
+    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}},audio:false});
+    w.innerHTML='<video id="cam" playsinline muted autoplay></video><div class="small muted" style="margin:6px 0">Наведите камеру на QR-код билета</div><button class="btn sm mb" onclick="stopCam()">Остановить камеру</button>';tr(w);
     const v=$('#cam');v.srcObject=camStream;await v.play();
-    const det=new BarcodeDetector({formats:['qr_code']});
-    const loop=async()=>{if(!camStream)return;try{const c=await det.detect(v);if(c.length){const val=c[0].rawValue;stopCam();doScan(val);return}}catch(e){}requestAnimationFrame(loop)};loop();
-  }catch(e){w.innerHTML='<div class="card mb small">Нет доступа к камере: '+esc(e.message)+'</div>'}
+    // native detector where the browser has one (Android Chrome); otherwise a JS decoder that works everywhere, including iPhone
+    let det=null;if('BarcodeDetector' in window){try{det=new BarcodeDetector({formats:['qr_code']})}catch(e){}}
+    if(!det&&!window.jsQR&&typeof loadScript==='function'){try{await loadScript('vendor/jsQR.js')}catch(e){}}
+    if(!det&&!window.jsQR){stopCam();w.innerHTML='<div class="card mb small">Сканер не загрузился. Введите номер билета вручную.</div>';tr(w);return}
+    const cv=document.createElement('canvas'),g=cv.getContext('2d',{willReadFrequently:true}),stream=camStream;let last=0,pause=0,seen='',seenAt=0;
+    const loop=async t=>{
+      if(camStream!==stream)return;
+      if(t-last>150&&t>pause&&v.readyState>=2&&v.videoWidth){
+        last=t;let val=null;
+        try{
+          if(det){const c=await det.detect(v);if(c.length)val=c[0].rawValue}
+          else{const k=Math.min(1,720/v.videoWidth);cv.width=Math.round(v.videoWidth*k);cv.height=Math.round(v.videoHeight*k);g.drawImage(v,0,0,cv.width,cv.height);const d=g.getImageData(0,0,cv.width,cv.height),r=jsQR(d.data,cv.width,cv.height,{inversionAttempts:'dontInvert'});if(r&&r.data)val=r.data}
+        }catch(e){}
+        if(val){const again=val===seen&&t-seenAt<6000;seen=val;seenAt=t;if(!again){pause=t+1800;doScan(val)}}   // the same ticket held in front of the camera is not checked twice   // the camera stays on for the next visitor
+      }
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }catch(e){camStream=null;w.innerHTML='<div class="card mb small">Нет доступа к камере. Разрешите камеру для этого сайта в настройках браузера и нажмите кнопку ещё раз.<div class="tiny muted">'+esc(e.name||'')+': '+esc(e.message||'')+'</div></div>';tr(w)}
 }
 function stopCam(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null}const w=$('#camwrap');if(w)w.innerHTML=''}
 
@@ -3968,7 +3988,9 @@ async function doScanLive(v){
     scanRes={res:r.res,info:i?{number:i.number,title:s?s.title:'',startsAt:s?s.startsAt:'',hall:'Зал '+i.hall,r:i.r,n:i.n,status:i.status,checkedAt:i.checkedAt}:null};
     if(navigator.vibrate)try{navigator.vibrate(r.res==='ACCEPTED'?40:[60,40,60])}catch(e){}
   }catch(e){toast(e.message,true)}
-  render();const inp=$('#scanIn');if(inp){inp.value='';inp.focus()}
+  const box=$('#scanRes');
+  if(camStream&&box){box.innerHTML=scanResHTML();tr(box)}                 // keep the camera picture alive
+  else{render();const inp=$('#scanIn');if(inp){inp.value='';inp.focus()}}
 }
 function vStaffLive(){
   if(!live.role)return vKey('Вход для сотрудника');
