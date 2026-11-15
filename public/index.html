@@ -143,7 +143,7 @@ footer a{color:var(--mu)}
 .poster.has{aspect-ratio:auto;border:0;max-width:420px}.poster.has img{height:auto;display:block}
 @media(max-width:820px){.top{width:100%}}
 @media(max-width:760px){.poster.has{max-width:100%}}
-.pv #demobar,.pv .ph,.pv footer .row{display:none}
+.pv #demobar,.pv .ph,.pv footer .row,.live #demobar,.live .ph{display:none}
 #print-area{display:none}
 @media print{
   body{background:#fff}
@@ -2491,9 +2491,10 @@ var qrcode = function() {
    In the real app this code runs on the server with PostgreSQL.
    ===================================================================== */
 
-const MODE='preview';const PV=MODE==='preview'; // preview = public site with ticket sales not open yet
-const STORE_KEY='bazha_demo_v11';
-const now=()=>Date.now();
+const MODE='live';const LIVE=MODE==='live';  // live = real site talking to the server API
+let PV=MODE==='preview'||LIVE;                    // sales closed: only show halls. In live mode the server switches this off.
+const STORE_KEY='bazha_demo_v12';
+let SKEW=0;const now=()=>Date.now()+SKEW; // SKEW = server clock minus this device's clock
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>Number(n||0).toLocaleString('ru-RU').replace(/,/g,' ')+' ₸';
@@ -2544,17 +2545,17 @@ function seedDb(){
   ];
   HALLS.forEach((H,i)=>{
     const seats=[];
-    H.rows.forEach(([cnt,x0,y],ri)=>{for(let k=0;k<cnt;k++)seats.push({id:uid('st'),r:ri+1,n:H.desc?cnt-k:k+1,x:x0+k,y,cat:'STANDARD',active:true})});
+    H.rows.forEach(([cnt,x0,y],ri)=>{for(let k=0;k<cnt;k++)seats.push({id:'h'+(i+1)+'r'+(ri+1)+'s'+(H.desc?cnt-k:k+1),r:ri+1,n:H.desc?cnt-k:k+1,x:x0+k,y,cat:'STANDARD',active:true})});
     d.halls.push({id:'hall_'+(i+1),cinemaId:c.id,name:'Зал '+(i+1),seats,zones:H.zones,img:null,ver:1});
   });
   // One show time, four halls in parallel (date/time are DEMO — admin sets the real ones)
-  for(let i=0;i<4;i++)d.screenings.push({id:uid('scr'),hallId:'hall_'+(i+1),title:'Бажа',startsAt:'2026-11-19T19:00',price:2000,vipPrice:2000,status:i===3?'UNAVAILABLE':'ON_SALE',holdMin:null,limit:null,demo:true});
+  for(let i=0;i<4;i++)d.screenings.push({id:'scr'+(i+1),hallId:'hall_'+(i+1),title:'Бажа',startsAt:'2026-11-19T19:00',price:2000,vipPrice:2000,status:i===3?'UNAVAILABLE':'ON_SALE',holdMin:null,limit:null,demo:true});
   return d;
 }
 let saveT=null;
-function save(){if(PV)return;clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(STORE_KEY,JSON.stringify(db))}catch(e){}},150)}
+function save(){if(PV||LIVE)return;clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(STORE_KEY,JSON.stringify(db))}catch(e){}},150)}
 function load(){
-  if(PV){db=seedDb();return true}
+  if(PV||LIVE){db=seedDb();return true}
   try{const s=localStorage.getItem(STORE_KEY);if(s){db=JSON.parse(s);if(db&&db.v===2)return false}}catch(e){}
   db=seedDb();return true;
 }
@@ -3015,7 +3016,27 @@ Object.assign(KK,{
 'Когда':'Қашан','Где':'Қайда','Цена билета':'Билет бағасы',
 'Когда откроется продажа билетов?':'Билет сату қашан ашылады?','Скоро. Мы объявим о старте продаж, и на этом сайте появится кнопка покупки.':'Жақында. Сатудың басталғанын хабарлаймыз, сол кезде осы сайтта сатып алу батырмасы пайда болады.','Сколько стоит билет?':'Билет қанша тұрады?'
 });
-RULES_EXTRA=[[/^([\d\s\u00a0]+₸) за любое место\.$/,'Кез келген орын — $1.'],[/ТРЦ Asia Park, пр\. Кабанбай батыра, 21/g,'Asia Park СОО, Қабанбай батыр даңғылы, 21'],[/^Мы выставим счёт в приложении Kaspi\.kz на номер (.+)\. После этого у вас будет (\d+) минут на оплату\.$/,'Kaspi.kz қосымшасында $1 нөміріне шот жібереміз. Содан кейін төлеуге $2 минутыңыз болады.'],[/^После бронирования вам придёт счёт в Kaspi\. На оплату даётся (\d+) минут\. Если не оплатить вовремя, места автоматически освобождаются\.$/,'Брондағаннан кейін Kaspi-ге шот келеді. Төлеуге $1 минут беріледі. Уақытында төленбесе, орындар автоматты түрде босатылады.'],[/^Новый код можно запросить через (\d+) сек$/,'Жаңа кодты $1 секундтан кейін сұрауға болады']];
+Object.assign(KK,{
+'Загрузка…':'Жүктелуде…','Чек на проверке':'Чек тексерілуде','Оплата переводом Kaspi':'Kaspi аударымы арқылы төлеу','Сумма перевода':'Аударым сомасы','Номер Kaspi':'Kaspi нөмірі','Получатель':'Алушы','Скопировать номер':'Нөмірді көшіру',
+'1. Переведите эту сумму на номер в приложении Kaspi.kz':'1. Kaspi.kz қосымшасында осы соманы көрсетілген нөмірге аударыңыз','2. Сохраните чек: скриншот или PDF':'2. Чекті сақтаңыз: скриншот немесе PDF','3. Загрузите чек ниже — билет появится сразу':'3. Чекті төменге жүктеңіз — билет бірден шығады',
+'Загрузите чек':'Чекті жүктеңіз','Файл чека: скриншот или PDF *':'Чек файлы: скриншот немесе PDF *','Отправить чек':'Чекті жіберу','Проверяем чек…':'Чек тексерілуде…','Чек не принят':'Чек қабылданбады',
+'Загрузите чёткий скриншот или PDF чека целиком.':'Чектің анық скриншотын немесе PDF файлын толық жүктеңіз.','Отправить на ручную проверку':'Қолмен тексеруге жіберу','Если чек верный, но не принимается — администратор проверит его сам.':'Чек дұрыс болса да қабылданбаса — әкімші оны өзі тексереді.',
+'Мы проверим сумму, получателя, номер квитанции и время перевода.':'Біз соманы, алушыны, түбіртек нөмірін және аударым уақытын тексереміз.',
+'Администратор проверит чек вручную. Билеты появятся на этой странице. Места закреплены за вами.':'Әкімші чекті қолмен тексереді. Билеттер осы бетте пайда болады. Орындар сізге бекітілген.',
+'Чек не был загружен вовремя, места освобождены. Если вы уже перевели деньги — напишите нам, указав номер заказа.':'Чек уақытында жүктелмеді, орындар босатылды. Ақша аударып қойсаңыз — тапсырыс нөмірін көрсетіп, бізге жазыңыз.',
+'На этом устройстве заказов пока нет.':'Бұл құрылғыда әзірге тапсырыс жоқ.','Здесь показаны заказы, сделанные с этого устройства. Билеты также открываются по ссылке на заказ, которую вы сохранили.':'Мұнда осы құрылғыдан жасалған тапсырыстар көрсетілген. Билеттер сақтап қойған тапсырыс сілтемесі арқылы да ашылады.',
+'В чеке не видно, что перевод выполнен':'Чекте аударымның орындалғаны көрінбейді','Не удалось прочитать номер квитанции':'Түбіртек нөмірін оқу мүмкін болмады','Не удалось прочитать сумму':'Соманы оқу мүмкін болмады','Не удалось прочитать дату и время':'Күні мен уақытын оқу мүмкін болмады',
+'Чек сделан раньше, чем оформлен заказ':'Чек тапсырыс рәсімделгенге дейін жасалған','Дата в чеке ещё не наступила':'Чектегі күн әлі келген жоқ','Этот чек уже использован для другого заказа':'Бұл чек басқа тапсырысқа қолданылған','Администратор не принял чек':'Әкімші чекті қабылдамады','Чек на ручной проверке':'Чек қолмен тексерілуде',
+'Чек принят, билеты готовы':'Чек қабылданды, билеттер дайын','Чек отправлен администратору на проверку':'Чек әкімшіге тексеруге жіберілді','Прикрепите файл чека':'Чек файлын тіркеңіз','Файл слишком большой. Загрузите скриншот чека.':'Файл тым үлкен. Чектің скриншотын жүктеңіз.','Не удалось открыть файл. Нужен скриншот или PDF чека.':'Файлды ашу мүмкін болмады. Чектің скриншоты немесе PDF қажет.',
+'Нет связи с сервером. Проверьте интернет.':'Сервермен байланыс жоқ. Интернетті тексеріңіз.','Ошибка сервера. Попробуйте ещё раз.':'Сервер қатесі. Қайталап көріңіз.','У вас уже есть неоплаченные заказы. Оплатите или отмените их.':'Төленбеген тапсырыстарыңыз бар. Оларды төлеңіз немесе тоқтатыңыз.',
+'Слишком много попыток. Отправьте чек на ручную проверку.':'Әрекет тым көп. Чекті қолмен тексеруге жіберіңіз.','Нужен скриншот или PDF чека':'Чектің скриншоты немесе PDF қажет','Сначала загрузите чек':'Алдымен чекті жүктеңіз','Номер телефона *':'Телефон нөмірі *','Забронировать места':'Орындарды брондау',
+'Переведите через Kaspi и загрузите чек. Билет с QR-кодом появится сразу.':'Kaspi арқылы аударып, чекті жүктеңіз. QR-коды бар билет бірден шығады.',
+'Выберите зал и места, введите имя и номер телефона. Переведите сумму через Kaspi на указанный номер и загрузите чек. После проверки чека билет появится сразу.':'Залды және орындарды таңдап, аты-жөніңіз бен телефон нөміріңізді енгізіңіз. Соманы Kaspi арқылы көрсетілген нөмірге аударып, чекті жүктеңіз. Чек тексерілген соң билет бірден шығады.',
+'Билеты появляются на странице заказа сразу после проверки чека. Их можно скачать в PDF. Сохраните ссылку на заказ — по ней билеты всегда доступны.':'Билеттер чек тексерілген бойда тапсырыс бетінде пайда болады. Оларды PDF түрінде жүктеп алуға болады. Тапсырыс сілтемесін сақтап қойыңыз — билеттер сол арқылы әрдайым қолжетімді.',
+'Чек не принимается. Что делать?':'Чек қабылданбай жатыр. Не істеу керек?','Проверьте сумму и получателя, загрузите чек целиком, без обрезки. Если чек верный, нажмите «Отправить на ручную проверку» — администратор проверит его сам.':'Сома мен алушыны тексеріп, чекті қиып алмай, толық жүктеңіз. Чек дұрыс болса, «Қолмен тексеруге жіберу» батырмасын басыңыз — әкімші өзі тексереді.',
+'Отменён администратором':'Әкімші тоқтатты','Сумма в чеке не совпадает с суммой заказа':'Чектегі сома тапсырыс сомасына сәйкес келмейді','Получатель в чеке не тот':'Чектегі алушы басқа','Отправлен на ручную проверку':'Қолмен тексеруге жіберілді','Ключ доступа':'Кіру кілті','Войти':'Кіру','Неверный ключ':'Кілт қате'
+});
+RULES_EXTRA=[[/^После бронирования места закреплены за вами на (\d+) минут\. Если за это время чек не загружен, места освобождаются\.$/,'Брондағаннан кейін орындар сізге $1 минутқа бекітіледі. Осы уақытта чек жүктелмесе, орындар босатылады.'],[/^Файл выбран: (.+)$/,'Файл таңдалды: $1'],[/^([\d\s\u00a0]+₸) за любое место\.$/,'Кез келген орын — $1.'],[/ТРЦ Asia Park, пр\. Кабанбай батыра, 21/g,'Asia Park СОО, Қабанбай батыр даңғылы, 21'],[/^Мы выставим счёт в приложении Kaspi\.kz на номер (.+)\. После этого у вас будет (\d+) минут на оплату\.$/,'Kaspi.kz қосымшасында $1 нөміріне шот жібереміз. Содан кейін төлеуге $2 минутыңыз болады.'],[/^После бронирования вам придёт счёт в Kaspi\. На оплату даётся (\d+) минут\. Если не оплатить вовремя, места автоматически освобождаются\.$/,'Брондағаннан кейін Kaspi-ге шот келеді. Төлеуге $1 минут беріледі. Уақытында төленбесе, орындар автоматты түрде босатылады.'],[/^Новый код можно запросить через (\d+) сек$/,'Жаңа кодты $1 секундтан кейін сұрауға болады']];
 const KM={'января':'қаңтар','февраля':'ақпан','марта':'наурыз','апреля':'сәуір','мая':'мамыр','июня':'маусым','июля':'шілде','августа':'тамыз','сентября':'қыркүйек','октября':'қазан','ноября':'қараша','декабря':'желтоқсан'};
 const KD={'воскресенье':'жексенбі','понедельник':'дүйсенбі','вторник':'сейсенбі','среда':'сәрсенбі','четверг':'бейсенбі','пятница':'жұма','суббота':'сенбі','вс':'жс','пн':'дс','вт':'сс','ср':'ср','чт':'бс','пт':'жм','сб':'сн'};
 const RULES=[
@@ -3071,13 +3092,18 @@ function render(){
   $('#demobar').innerHTML=DEMOBAR0;$('footer').innerHTML=FOOT0;
   $('#langsw').innerHTML=[['kk','ҚАЗ'],['ru','РУС']].map(([k,t])=>`<button class="${ui.lang===k?'on':''}" onclick="setLang('${k}')">${t}</button>`).join('');
   {const rs=$('#roleSel');if(rs)rs.value=ui.role}
-  const links=[['','Главная'],['screenings','Залы'],['about','О проекте'],['faq','FAQ'],['contacts','Контакты']];if(!PV)links.push(['my','Мои билеты']);
+  const links=[['','Главная'],['screenings','Залы'],['about','О проекте'],['faq','FAQ'],['contacts','Контакты']];if(!PV||LIVE)links.push(['my','Мои билеты']);
   if(ui.role==='staff'||ui.role==='admin')links.push(['staff','Вход: сканер']);
   if(ui.role==='admin')links.push(['admin','Админ-панель']);
   $('#nav').innerHTML=links.map(([h,t])=>`<a href="#/${h}" class="${(p0===h)?'on':''} ${h==='admin'||h==='staff'?'adm':''}">${t}</a>`).join('');
   let html='';
   try{
-    if(p0===''||(PV&&['order','my','staff','admin','legal'].includes(p0)))html=vHome();
+    if(p0===''||(PV&&!LIVE&&['order','my','staff','admin','legal'].includes(p0)))html=vHome();
+    else if(LIVE&&p0==='order')html=vOrderLive(r[1]);
+    else if(LIVE&&p0==='my')html=vMyLive();
+    else if(LIVE&&p0==='legal')html=vLegalLive(r[1]);
+    else if(LIVE&&p0==='staff')html=vStaffLive();
+    else if(LIVE&&p0==='admin')html=vAdminLive(r[1],r[2]);
     else if(p0==='screenings')html=vScreenings();
     else if(p0==='s')html=vSeat(r[1]);
     else if(p0==='order')html=vOrder(r[1]);
@@ -3143,7 +3169,7 @@ function vHome(){
     <div class="grid g3 step3">
       <div class="card"><div class="n">1</div><h3>Выберите зал</h3><p class="muted small">Показ идёт одновременно в нескольких залах — выберите любой.</p></div>
       <div class="card"><div class="n">2</div><h3>Выберите места</h3><p class="muted small">На интерактивной схеме зала. Места держатся за вами ${db.settings.holdMin} минут.</p></div>
-      <div class="card"><div class="n">3</div><h3>Оплатите и получите билет</h3><p class="muted small">${PV?'Электронный билет с QR-кодом — на экране, в PDF и на email.':'Оплатите счёт в приложении Kaspi.kz. Билеты с QR-кодом сразу появятся на экране, в PDF и на email.'}</p></div>
+      <div class="card"><div class="n">3</div><h3>Оплатите и получите билет</h3><p class="muted small">${PV?'Электронный билет с QR-кодом — на экране, в PDF и на email.':LIVE?'Переведите через Kaspi и загрузите чек. Билет с QR-кодом появится сразу.':'Оплатите счёт в приложении Kaspi.kz. Билеты с QR-кодом сразу появятся на экране, в PDF и на email.'}</p></div>
     </div>
   </div></section>
   <section class="blk"><div class="wrap">${aboutBlock()}</div></section>
@@ -3163,6 +3189,14 @@ function faqBlock(){
   const q=PV?[
     ['Когда откроется продажа билетов?','Скоро. Мы объявим о старте продаж, и на этом сайте появится кнопка покупки.'],
     ['Сколько стоит билет?',`${money(upcoming()[0].price)} за любое место.`],
+    ['Можно купить несколько билетов?',`Да, до ${db.settings.maxSeats} мест в одном заказе. Для каждого места — отдельный билет с QR-кодом.`],
+    ['Как пройти в зал?','Покажите QR-код на входе с телефона или распечатанным. Каждый QR-код действует один раз.'],
+    ['Можно вернуть билет?','Нет. Купленные билеты возврату и обмену не подлежат.']
+  ]:LIVE?[
+    ['Как купить билет?','Выберите зал и места, введите имя и номер телефона. Переведите сумму через Kaspi на указанный номер и загрузите чек. После проверки чека билет появится сразу.'],
+    ['Сколько времени держатся места?',`После бронирования места закреплены за вами на ${db.settings.holdMin} минут. Если за это время чек не загружен, места освобождаются.`],
+    ['Где мой билет?','Билеты появляются на странице заказа сразу после проверки чека. Их можно скачать в PDF. Сохраните ссылку на заказ — по ней билеты всегда доступны.'],
+    ['Чек не принимается. Что делать?','Проверьте сумму и получателя, загрузите чек целиком, без обрезки. Если чек верный, нажмите «Отправить на ручную проверку» — администратор проверит его сам.'],
     ['Можно купить несколько билетов?',`Да, до ${db.settings.maxSeats} мест в одном заказе. Для каждого места — отдельный билет с QR-кодом.`],
     ['Как пройти в зал?','Покажите QR-код на входе с телефона или распечатанным. Каждый QR-код действует один раз.'],
     ['Можно вернуть билет?','Нет. Купленные билеты возврату и обмену не подлежат.']
@@ -3209,7 +3243,7 @@ function vScreenings(){
 /* --------------------------- seat selection --------------------------- */
 function fitZoom(id){const h=S.hall(S.scr(id).hallId);const W=88+Math.max(...h.seats.map(s=>s.x+1),...(h.zones||[]).map(z=>z.x+z.w))*32;return Math.max(.5,Math.min(1,+((Math.min(innerWidth,1120)-58)/W).toFixed(2)))}
 function startSelect(id){if(ui.selScr!==id){ui.sel=[];ui.selScr=id;ui.tapped=null;ui.zoom=fitZoom(id)}ui.step='select';ui.idem=null}
-function myPendingOrderFor(scrId){const o=ui.pending&&S.byToken(ui.pending);return o&&o.scrId===scrId&&o.status==='PENDING_PAYMENT'?o:null}
+function myPendingOrderFor(scrId){const o=LIVE?db.orders.find(o=>o.scrId===scrId&&o.status==='PENDING_PAYMENT'):ui.pending&&S.byToken(ui.pending);return o&&o.scrId===scrId&&o.status==='PENDING_PAYMENT'?o:null}
 const COLORS={AVAILABLE:'#22c55e',SELECTED:'#3b82f6',UNAVAILABLE:'#45454d',SOLD:'#991b1b',HELD:'#eab308',HELD_BY_YOU:'#3b82f6'};
 function mapSVG(scr,st,opts={}){
   const h=S.hall(scr.hallId),U=32,padX=44,padT=78;
@@ -3298,20 +3332,22 @@ function vContacts(scr){
   return `<div class="wrap" style="padding:22px 18px 30px;max-width:640px">${scrHeader(scr)}${stepsHTML(1)}
    <div class="card mb"><div class="between"><div><b>${seats.length} ${seats.length===1?'билет':'билета'}</b><div class="muted small">${seats.map(s=>`Ряд ${s.r}, место ${s.n}`).join(' · ')}</div></div><b>${money(total)}</b></div>
    <button class="btn sm ghost mt" onclick="ui.step='select';render()">Изменить места</button></div>
-   ${me()?'':authBox()}
-   <div style="${me()?'':'display:none'}">
-   <div class="card mb between"><div><div class="muted small">Номер подтверждён:</div><b>${fmtPhone(me())}</b></div><button class="btn sm ghost" onclick="logout()">Сменить номер</button></div>
+   ${LIVE||me()?'':authBox()}
+   <div style="${LIVE||me()?'':'display:none'}">
+   ${LIVE?'':`<div class="card mb between"><div><div class="muted small">Номер подтверждён:</div><b>${fmtPhone(me())}</b></div><button class="btn sm ghost" onclick="logout()">Сменить номер</button></div>`}
    <h3 class="mb">Контактные данные</h3>
+   ${LIVE?`<label class="f"><span>Номер телефона *</span><input id="fPhone" type="tel" inputmode="tel" autocomplete="tel" value="${esc(f.phone||'+7 ')}" oninput="phoneMask(this);ui.form.phone=this.value"></label>`:''}
    <label class="f"><span>Имя и фамилия *</span><input id="fName" autocomplete="name" value="${esc(f.name)}" oninput="ui.form.name=this.value;this.style.borderColor=''"></label>
    <label class="f"><span>Email — пришлём билеты (необязательно)</span><input id="fEmail" type="email" inputmode="email" autocomplete="email" value="${esc(f.email)}" oninput="ui.form.email=this.value"></label>
    <label class="check"><input type="checkbox" ${f.offer?'checked':''} onchange="ui.form.offer=this.checked"><span data-notr>${L('Я принимаю <a href="#/legal/offer">публичную оферту</a>. Билеты возврату не подлежат.','<a href="#/legal/offer">Жария офертаны</a> қабылдаймын. Билеттер қайтарылмайды.')}</span></label>
    <label class="check"><input type="checkbox" ${f.pd?'checked':''} onchange="ui.form.pd=this.checked"><span data-notr>${L('Согласен(на) на обработку персональных данных (<a href="#/legal/privacy">политика</a>)','Жеке деректерімді өңдеуге келісемін (<a href="#/legal/privacy">саясат</a>)')}</span></label>
-   <button class="btn pri w mt" id="bookBtn" onclick="submitOrder()">Забронировать и получить счёт Kaspi</button>
+   <button class="btn pri w mt" id="bookBtn" onclick="submitOrder()">${LIVE?'Забронировать места':'Забронировать и получить счёт Kaspi'}</button>
    <p class="muted tiny mt">После нажатия места закрепляются за вами на ${S.holdMin(scr)} мин. Цены и наличие мест проверяет сервер.</p>
    </div>
   </div>`;
 }
 function submitOrder(){
+  if(LIVE)return submitOrderLive();
   const scr=S.scr(ui.selScr);if(!ui.idem)ui.idem=uid('idem');
   const btn=$('#bookBtn');if(btn)btn.disabled=true;
   try{
@@ -3389,7 +3425,8 @@ function simPay(token,ok){
   const o=S.byToken(token),p=o&&db.payments.find(x=>x.orderId===o.id&&x.status==='PENDING'&&x.provider===Provider.name);if(!p)return render();
   Provider.customerAction(p.ext,ok);S.handleWebhook(Provider.makeEvent(p.ext));window.scrollTo(0,0);render();
 }
-function cancelOrder(token){if(!confirm(trS('Отменить заказ и освободить места?')))return;try{S.cancelByCustomer(token);render()}catch(e){toast(e.message,true)}}
+function cancelOrder(token){
+  if(LIVE){if(!confirm(trS('Отменить заказ и освободить места?')))return;api('POST','orders/cancel',{token}).then(()=>syncOrders()).then(()=>syncState()).catch(e=>toast(e.message,true)).then(render);return}if(!confirm(trS('Отменить заказ и освободить места?')))return;try{S.cancelByCustomer(token);render()}catch(e){toast(e.message,true)}}
 function copyLink(token){const u=location.href.split('#')[0]+'#/order/'+token;(navigator.clipboard?navigator.clipboard.writeText(u):Promise.reject()).then(()=>toast('Ссылка скопирована'),()=>prompt('Ссылка на билеты:',u))}
 function printTickets(token){
   const o=S.byToken(token);const ts=db.tickets.filter(t=>t.orderId===o.id&&t.status!=='REFUNDED');
@@ -3522,7 +3559,8 @@ function scanResHTML(){
   const M={ACCEPTED:['r-ok','✓ ПРОХОД РАЗРЕШЁН'],VALID:['r-ok','Билет действителен'],ALREADY_USED:['r-bad','✗ УЖЕ ИСПОЛЬЗОВАН'],REFUNDED:['r-bad','✗ ВОЗВРАЩЁН'],CANCELLED:['r-bad','✗ ОТМЕНЁН'],WRONG_SCREENING:['r-warn','⚠ ДРУГОЙ СЕАНС'],INVALID_TOKEN:['r-bad','✗ БИЛЕТ НЕ НАЙДЕН']}[r];
   return `<div class="result ${M[0]}"><div class="big">${M[1]}</div>${i?`<div>«${esc(i.title)}» · ${fmtDate(i.startsAt)} ${fmtTime(i.startsAt)}</div><div style="font-size:24px;font-weight:800;margin:6px 0">${esc(i.hall)} · Ряд ${i.r} · Место ${i.n}</div><div class="small muted">${i.number} · статус: ${ru(i.status)}${i.checkedAt?' · вход в '+new Date(i.checkedAt).toTimeString().slice(0,5):''}</div>`:''}</div>`;
 }
-function doScan(v){scanRes=S.validate(v,ui.staffScr,true,actor());const el=$('#scanRes');if(navigator.vibrate)try{navigator.vibrate(scanRes.res==='ACCEPTED'?40:[60,40,60])}catch(e){}render()}
+function doScan(v){
+  if(LIVE)return doScanLive(v);scanRes=S.validate(v,ui.staffScr,true,actor());const el=$('#scanRes');if(navigator.vibrate)try{navigator.vibrate(scanRes.res==='ACCEPTED'?40:[60,40,60])}catch(e){}render()}
 async function startCam(){
   const w=$('#camwrap');
   if(!('BarcodeDetector' in window)||!navigator.mediaDevices){w.innerHTML='<div class="card mb small">Камера в этом браузере не поддерживается в демо. В рабочей версии используется сканер @zxing, который работает на iPhone и Android. Используйте ввод кода ниже.</div>';return}
@@ -3740,6 +3778,7 @@ function simulateOtherBuyer(){
 function updateTimers(){document.querySelectorAll('[data-exp]').forEach(el=>{const ms=Math.max(0,+el.dataset.exp-now());const m=Math.floor(ms/60000),s=Math.floor(ms%60000/1000);el.textContent=String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');el.style.color=ms<60000?'#f87171':''})}
 let tick=0;
 setInterval(()=>{
+  if(LIVE){tick++;liveTick();return}
   if(PV)return;
   tick++;
   S.sweep();
@@ -3750,10 +3789,268 @@ setInterval(()=>{
   if(r[0]==='order'){const o=S.byToken(r[1]);if(o&&ordSig(o)!==ui.lastOrderStatus)render()}
 },1000);
 
+
+/* ================================ LIVE MODE ================================
+   The page keeps a local copy ("mirror") of what the server knows: taken seats and
+   this device's orders. All decisions are made by the server (/api/*).            */
+const live={state:null,tokens:[],key:null,role:null,adm:null,admQ:'',admSt:'all',img:{},rc:{file:null,busy:false,result:null},asked:{},lastState:0,lastOrders:0};
+async function api(method,path,body,auth){
+  const h={'content-type':'application/json'};if(auth&&live.key)h['x-admin-key']=live.key;
+  let r;try{r=await fetch('/api/'+path,{method,headers:h,body:body?JSON.stringify(body):undefined,cache:'no-store'})}catch(e){throw err('NETWORK','Нет связи с сервером. Проверьте интернет.')}
+  let j=null;try{j=await r.json()}catch(e){}
+  if(!r.ok||!j){const e=(j&&j.error)||{};throw err(e.code||('HTTP_'+r.status),e.message||'Ошибка сервера. Попробуйте ещё раз.',e.details)}
+  return j;
+}
+function applyState(s){
+  live.state=s;live.lastState=Date.now();if(s.now)SKEW=s.now-Date.now();
+  const was=PV;PV=!(s.configured!==false&&s.salesOpen);document.body.classList.toggle('pv',PV);
+  if(s.price){db.screenings.forEach(x=>{x.price=x.vipPrice=s.price;if(s.startsAt)x.startsAt=s.startsAt;x.status=(s.hallsOpen&&s.hallsOpen[x.id])?'ON_SALE':'UNAVAILABLE'});db.settings.holdMin=s.holdMin;db.settings.maxSeats=s.maxSeats}
+  const Lk={};for(const scr in (s.taken||{}))for(const seat in s.taken[scr])Lk[scr+'|'+seat]={orderId:'_',status:s.taken[scr][seat]==='S'?'SOLD':'HELD',exp:now()+864e5};
+  for(const o of db.orders)if(o.status==='PENDING_PAYMENT'||o.status==='PAID')for(const it of o.items){const k=o.scrId+'|'+it.seatId;if(Lk[k])Lk[k].orderId=o.id}
+  db.locks=Lk;return was!==PV;
+}
+function applyOrders(list){
+  db.orders=list.map(o=>({...o,customerId:'c_'+o.id}));db.customers=list.map(o=>({id:'c_'+o.id,...o.customer}));db.tickets=list.flatMap(o=>o.tickets);
+  if(live.state)applyState(live.state);
+}
+async function syncState(){return applyState(await api('GET','state'))}
+async function syncOrders(){live.lastOrders=Date.now();if(!live.tokens.length)return;const r=await api('GET','orders?tokens='+live.tokens.join(','));if(r.now)SKEW=r.now-Date.now();applyOrders(r.orders)}
+function addToken(t){if(t&&!live.tokens.includes(t)){live.tokens.unshift(t);live.tokens=live.tokens.slice(0,30);try{localStorage.setItem('oe_tokens',JSON.stringify(live.tokens))}catch(e){}}}
+async function liveStart(){
+  try{live.tokens=JSON.parse(localStorage.getItem('oe_tokens')||'[]').filter(t=>typeof t==='string')}catch(e){}
+  try{live.key=sessionStorage.getItem('oe_key')}catch(e){}
+  await Promise.all([syncState().catch(()=>{}),syncOrders().catch(()=>{})]);
+  if(live.key){try{const r=await api('GET','staff/me',null,true);live.role=ui.role=r.role}catch(e){live.key=null}}
+  render();
+}
+let liveBusy=false;
+async function liveTick(){
+  updateTimers();
+  const r=route(),t=Date.now();
+  const o=r[0]==='order'&&db.orders.find(x=>x.token===r[1]);
+  if(o&&o.status==='PENDING_PAYMENT'&&o.holdExp<=now()&&!o.review){o.status='EXPIRED';render()}
+  if(liveBusy||live.rc.busy||document.hidden)return;
+  try{
+    liveBusy=true;
+    if(r[0]==='s'&&!PV&&ui.step==='select'&&t-live.lastState>5000){await syncState();refreshSeatMap()}
+    else if(o&&(o.status==='PENDING_PAYMENT')&&t-live.lastOrders>(o.review?10000:20000)){const sig=ordSigLive(o);await syncOrders();const n=db.orders.find(x=>x.token===r[1]);if(n&&ordSigLive(n)!==sig)render()}
+    else if(t-live.lastState>30000&&r[0]!=='admin'&&r[0]!=='staff'){if(await syncState())render();else if(r[0]==='screenings'||r[0]==='')render()}
+  }catch(e){}finally{liveBusy=false}
+}
+const ordSigLive=o=>o.status+'|'+o.review+'|'+o.attempts+'|'+o.tickets.length;
+async function submitOrderLive(){
+  const scr=S.scr(ui.selScr);if(!ui.idem)ui.idem=uid('idem');const btn=$('#bookBtn');if(btn)btn.disabled=true;
+  try{
+    const r=await api('POST','orders',{idem:ui.idem,scrId:scr.id,seatIds:ui.sel,name:ui.form.name,phone:ui.form.phone,email:ui.form.email,offer:ui.form.offer,pd:ui.form.pd});
+    addToken(r.order.token);ui.sel=[];ui.step='select';ui.idem=null;live.rc={file:null,busy:false,result:null};
+    await syncOrders().catch(()=>{});await syncState().catch(()=>{});go('#/order/'+r.order.token);
+  }catch(e){
+    if(btn)btn.disabled=false;
+    if(e.code==='SEATS_TAKEN'){ui.sel=ui.sel.filter(id=>!((e.details&&e.details.seatIds)||[]).includes(id));ui.idem=null;ui.step='select';await syncState().catch(()=>{});toast(trS(e.message)+'. '+trS('Выберите другие места.'),true);render()}
+    else if(e.code==='SALES_CLOSED'){await syncState().catch(()=>{});toast(e.message,true);render()}
+    else{toast(e.message,true);const n=$('#fName');if(n&&e.message.includes('имя')){n.style.borderColor='#d91c2b';n.focus()}}
+  }
+}
+/* ---- receipt upload: any picture or PDF becomes a JPEG in the browser, the server reads it ---- */
+function loadScript(src){return new Promise((res,rej)=>{if(document.querySelector('script[data-src="'+src+'"]'))return res();const s=document.createElement('script');s.src=src;s.dataset.src=src;s.onload=res;s.onerror=()=>rej(new Error('load '+src));document.head.appendChild(s)})}
+function canvasJpeg(draw,w,h){const k=Math.min(1,1400/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);draw(g,c.width,c.height);return c.toDataURL('image/jpeg',.82)}
+async function fileToJpeg(f){
+  if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
+    await loadScript('vendor/pdf.min.js');pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js';
+    const doc=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise,page=await doc.getPage(1);
+    const v0=page.getViewport({scale:1}),vp=page.getViewport({scale:Math.min(3,1200/v0.width)}),c=document.createElement('canvas');c.width=Math.round(vp.width);c.height=Math.round(vp.height);
+    const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);await page.render({canvasContext:g,viewport:vp}).promise;return c.toDataURL('image/jpeg',.85);
+  }
+  if(!f.type.startsWith('image/'))throw new Error('type');
+  const url=URL.createObjectURL(f);
+  try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url});return canvasJpeg((g,w,h)=>g.drawImage(im,0,0,w,h),im.naturalWidth,im.naturalHeight)}finally{URL.revokeObjectURL(url)}
+}
+async function liveFile(inp){
+  const f=inp.files&&inp.files[0];if(!f)return;
+  if(f.size>15e6){inp.value='';return toast('Файл слишком большой. Загрузите скриншот чека.',true)}
+  try{live.rc.file={name:f.name,data:await fileToJpeg(f)};live.rc.result=null;render()}catch(e){inp.value='';toast('Не удалось открыть файл. Нужен скриншот или PDF чека.',true)}
+}
+async function liveSend(token){
+  if(!live.rc.file)return toast('Прикрепите файл чека',true);if(live.rc.busy)return;
+  live.rc.busy=true;render();let r=null,fail=null;
+  try{r=await api('POST','receipt',{token,image:live.rc.file.data})}
+  catch(e){fail=e;if(/^HTTP_5|OCR_FAILED|INTERNAL/.test(e.code||'')){try{r=await api('POST','receipt',{token,image:live.rc.file.data,manual:true});fail=null}catch(e2){fail=e2}}}
+  live.rc.busy=false;
+  if(fail){toast(fail.message,true);await syncOrders().catch(()=>{});return render()}
+  await syncOrders().catch(()=>{});await syncState().catch(()=>{});
+  if(r.ok){live.rc={file:null,busy:false,result:null};toast('Чек принят, билеты готовы');window.scrollTo(0,0)}
+  else if(r.review){live.rc={file:null,busy:false,result:null};toast('Чек отправлен администратору на проверку');window.scrollTo(0,0)}
+  else{live.rc.result=r;live.rc.file=null}
+  render();
+}
+async function liveReview(token){try{await api('POST','receipt/review',{token});live.rc={file:null,busy:false,result:null};await syncOrders();toast('Чек отправлен администратору на проверку');window.scrollTo(0,0);render()}catch(e){toast(e.message,true)}}
+function problemText(p,res,adm){
+  const M={NOT_SUCCESS:'В чеке не видно, что перевод выполнен',NO_NUMBER:'Не удалось прочитать номер квитанции',NO_AMOUNT:'Не удалось прочитать сумму',NO_DATE:'Не удалось прочитать дату и время',TOO_OLD:'Чек сделан раньше, чем оформлен заказ',IN_FUTURE:'Дата в чеке ещё не наступила',DUPLICATE:'Этот чек уже использован для другого заказа',MANUAL_REJECT:'Администратор не принял чек',MANUAL:'Отправлен на ручную проверку',WRONG_AMOUNT:'Сумма в чеке не совпадает с суммой заказа',WRONG_RECIPIENT:'Получатель в чеке не тот'};
+  if(adm)return esc(M[p]||p);
+  if(p==='WRONG_AMOUNT'&&res&&res.read&&res.read.amount!=null)return L('Сумма в чеке — '+money(res.read.amount)+', а нужно '+money(res.expected.total),'Чектегі сома — '+money(res.read.amount)+', ал керегі '+money(res.expected.total));
+  if(p==='WRONG_RECIPIENT')return L('Получатель в чеке не тот. Нужно: ','Чектегі алушы басқа. Керегі: ')+'«'+esc((live.state&&live.state.recipient)||'')+'»';
+  return M[p]?trS(M[p]):esc(p);
+}
+function vOrderLive(token){
+  const o=db.orders.find(x=>x.token===token);
+  if(!o){
+    if(token&&token.length>=20&&!live.asked[token]){live.asked[token]=1;addToken(token);syncOrders().catch(()=>{}).then(render);return `<div class="wrap" style="padding:40px 18px"><p class="muted">Загрузка…</p></div>`}
+    return `<div class="wrap" style="padding:40px 18px"><h2>Заказ не найден</h2><p class="muted">Проверьте ссылку.</p><a class="btn mt" href="#/">На главную</a></div>`;
+  }
+  const scr=S.scr(o.scrId),c=o.customer,st=live.state||{},rc=live.rc;
+  const itemsTbl=`<div class="tbl"><table><tr><th>Ряд</th><th>Место</th><th class="r">Цена</th></tr>${o.items.map(i=>`<tr><td>${i.r}</td><td>${i.n}</td><td class="r">${money(i.price)}</td></tr>`).join('')}<tr><td colspan="2"><b>Итого</b></td><td class="r"><b>${money(o.total)}</b></td></tr></table></div>`;
+  const pend=o.status==='PENDING_PAYMENT';
+  const head=`<div class="between"><div><div class="muted small">Заказ</div><h1 style="font-size:26px;font-weight:800">${o.number}</h1></div>${pend&&o.review?'<span class="badge b-yel">Чек на проверке</span>':badgeFor(o.status)}</div>
+   <div class="muted small mt">«${esc(scr.title)}» · ${fmtDateL(scr.startsAt)}, ${fmtTime(scr.startsAt)} · ${esc(S.hall(scr.hallId).name)}<br>${esc(c.name)} · ${fmtPhone(c.phone)}${c.email?' · '+esc(c.email):''}</div>`;
+  let body='',step=3;
+  if(pend&&o.review){
+    body=`<div class="result r-warn mt"><div class="big">Чек на проверке</div><div class="small">Администратор проверит чек вручную. Билеты появятся на этой странице. Места закреплены за вами.</div></div><div class="card mt">${itemsTbl}</div>`;
+  }else if(pend){
+    const last=o.lastReceipt,res=rc.result||(last?{read:{amount:last.amount},expected:{total:o.total}}:null),probs=rc.result?rc.result.problems:(last&&last.status==='REJECTED'&&last.reason?last.reason.split(','):null);
+    body=`<div class="card mt"><div class="between"><span>Места забронированы ещё</span><span class="timer" data-exp="${o.holdExp}">--:--</span></div></div>
+    <div class="card mt">${itemsTbl}</div>
+    <div class="card mt" style="border-color:#a16207"><h3 class="mb">Оплата переводом Kaspi</h3>
+     <div class="grid g3">
+      <div><div class="muted small">Сумма перевода</div><b style="font-size:22px">${money(o.total)}</b></div>
+      <div><div class="muted small">Номер Kaspi</div><b style="font-size:18px;white-space:nowrap">${esc(st.kaspi||'')}</b><div><button class="btn sm mt" style="margin-top:6px" onclick="cp('${esc((st.kaspi||'').replace(/\D/g,'').slice(1))}')">Скопировать номер</button></div></div>
+      <div><div class="muted small">Получатель</div><b style="font-size:18px">${esc(st.recipient||'')}</b></div>
+     </div>
+     <div class="small mt2">1. Переведите эту сумму на номер в приложении Kaspi.kz</div>
+     <div class="small">2. Сохраните чек: скриншот или PDF</div>
+     <div class="small">3. Загрузите чек ниже — билет появится сразу</div></div>
+    <div class="card mt"><h3 class="mb">Загрузите чек</h3>
+     ${probs?`<div class="result r-bad mb" style="text-align:left"><b>Чек не принят</b><ul style="margin:8px 0 0 18px;padding:0" data-notr>${probs.map(p=>`<li class="small">${problemText(p,res)}</li>`).join('')}</ul><div class="small muted mt">Загрузите чёткий скриншот или PDF чека целиком.</div></div>`:''}
+     <label class="f"><span>Файл чека: скриншот или PDF *</span><input id="rcFileIn" type="file" accept="image/*,application/pdf,.pdf" onchange="liveFile(this)" ${rc.busy?'disabled':''}></label>
+     ${rc.file?`<div class="small mb" style="color:#86efac">Файл выбран: ${esc(rc.file.name)}</div>`:''}
+     <button class="btn pri w" id="payBtn" onclick="liveSend('${o.token}')" ${rc.busy?'disabled':''}>${rc.busy?'Проверяем чек…':'Отправить чек'}</button>
+     ${probs&&!probs.includes('DUPLICATE')?`<button class="btn w mt" id="revBtn" onclick="liveReview('${o.token}')">Отправить на ручную проверку</button><p class="tiny muted mt">Если чек верный, но не принимается — администратор проверит его сам.</p>`:''}
+     <p class="tiny muted mt">Мы проверим сумму, получателя, номер квитанции и время перевода.</p></div>
+    <button class="btn ghost w mt" onclick="cancelOrder('${o.token}')">Отменить заказ</button>`;
+  }else if(o.status==='PAID'){
+    step=4;
+    body=`<div class="result r-ok mt"><div class="big">Оплата подтверждена</div><div class="small">Ваши билеты ниже. Покажите QR-код на входе — каждый действует один раз.</div></div>
+    <div class="row mt2"><button class="btn" onclick="downloadPdf('${o.token}')">⬇ Скачать PDF</button><button class="btn ghost" onclick="copyLink('${o.token}')">Скопировать ссылку на билеты</button></div>
+    <p class="small muted mt">Сохраните ссылку на эту страницу — по ней билеты всегда доступны.</p>
+    <div class="grid mt">${o.tickets.map(t=>ticketHTML(t,o)).join('')}</div>`;
+  }else if(o.status==='EXPIRED'){
+    body=`<div class="result r-bad mt"><div class="big">Время брони истекло</div><div class="small">Чек не был загружен вовремя, места освобождены. Если вы уже перевели деньги — напишите нам, указав номер заказа.</div></div><a class="btn pri w mt" href="#/s/${scr.id}" onclick="startSelect('${scr.id}')">Выбрать места заново</a>`;
+  }else{
+    body=`<div class="result r-bad mt"><div class="big">Заказ отменён</div>${o.cancelReason?`<div class="small">${esc(o.cancelReason)}</div>`:''}</div><a class="btn w mt" href="#/screenings">К выбору зала</a>`;
+  }
+  return `<div class="wrap" style="padding:22px 18px 30px;max-width:720px">${stepsHTML(step)}${head}${body}</div>`;
+}
+function vMyLive(){
+  const orders=db.orders.slice().sort((a,b)=>b.created-a.created);
+  return `<div class="wrap" style="padding:28px 18px;max-width:720px"><h1 class="h2">Мои билеты</h1>
+   ${orders.length?`<div class="grid">${orders.map(o=>{const s=S.scr(o.scrId);return `<a class="card" style="text-decoration:none" href="#/order/${o.token}"><div class="between"><b>${o.number}</b>${o.status==='PENDING_PAYMENT'&&o.review?'<span class="badge b-yel">Чек на проверке</span>':badgeFor(o.status)}</div><div class="muted small mt">«${esc(s.title)}» · ${fmtDateL(s.startsAt)}, ${fmtTime(s.startsAt)} · ${esc(S.hall(s.hallId).name)} · ${o.items.length} мест · ${money(o.total)}</div></a>`}).join('')}</div>`:`<p class="muted">На этом устройстве заказов пока нет.</p>`}
+   <p class="tiny muted mt2">Здесь показаны заказы, сделанные с этого устройства. Билеты также открываются по ссылке на заказ, которую вы сохранили.</p></div>`;
+}
+function vLegalLive(slug){
+  const s=upcoming()[0],cin=db.cinemas[0],st=db.settings,when=trS(fmtDateL(s.startsAt))+', '+fmtTime(s.startsAt),k=(live.state&&live.state.kaspi)||'';
+  const T=slug==='privacy'?[L('Политика конфиденциальности','Құпиялылық саясаты'),L(
+   `<p>Мы собираем: имя, номер телефона, email (если вы его указали) и изображение чека об оплате.</p><p>Зачем: чтобы оформить заказ, проверить оплату, выдать билет и связаться с вами по поводу показа.</p><p>Данные хранятся на серверах хостинга сайта, которые находятся за пределами Казахстана. Мы не передаём их третьим лицам и не используем для рекламы.</p><p>Чтобы удалить свои данные, напишите нам: ${esc(st.email)}, ${esc(st.support)}.</p>`,
+   `<p>Біз мыналарды жинаймыз: аты-жөніңіз, телефон нөміріңіз, email (көрсеткен болсаңыз) және төлем чегінің суреті.</p><p>Не үшін: тапсырысты рәсімдеу, төлемді тексеру, билет беру және көрсетілім бойынша сізбен байланысу үшін.</p><p>Деректер сайт хостингінің Қазақстаннан тыс орналасқан серверлерінде сақталады. Біз оларды үшінші тұлғаларға бермейміз және жарнама үшін пайдаланбаймыз.</p><p>Деректеріңізді жою үшін бізге жазыңыз: ${esc(st.email)}, ${esc(st.support)}.</p>`)]
+  :[L('Условия покупки','Сатып алу шарттары'),L(
+   `<p><b>Организатор:</b> ${esc(st.organizer)} (ORKEN EVENTS).</p><p><b>Что вы покупаете:</b> билет на групповой показ фильма «${esc(s.title)}» — ${when}, ${esc(cin.name)}, ${esc(cin.city)}. Один билет — одно место и один вход.</p><p><b>Цена:</b> ${money(s.price)} за место.</p><p><b>Оплата:</b> перевод через Kaspi на номер ${esc(k)}. После проверки чека вы получаете электронный билет с QR-кодом на этом сайте.</p><p><b>Возврат:</b> купленные билеты возврату и обмену не подлежат.</p><p><b>Важно:</b> если чек окажется недействительным или деньги не поступят, заказ и билеты аннулируются.</p><p><b>Вопросы:</b> ${esc(st.support)}, ${esc(st.email)}.</p>`,
+   `<p><b>Ұйымдастырушы:</b> ${esc(st.organizer)} (ORKEN EVENTS).</p><p><b>Не сатып аласыз:</b> «${esc(s.title)}» фильмінің топтық көрсетіліміне билет — ${when}, ${esc(cin.name)}, ${esc(cin.city)}. Бір билет — бір орын және бір рет кіру.</p><p><b>Бағасы:</b> бір орын ${money(s.price)}.</p><p><b>Төлем:</b> Kaspi арқылы ${esc(k)} нөміріне аударым. Чек тексерілгеннен кейін осы сайтта QR-коды бар электронды билет аласыз.</p><p><b>Қайтару:</b> сатып алынған билеттер қайтарылмайды және айырбасталмайды.</p><p><b>Маңызды:</b> чек жарамсыз болса немесе ақша түспесе, тапсырыс пен билеттер жойылады.</p><p><b>Сұрақтар:</b> ${esc(st.support)}, ${esc(st.email)}.</p>`)];
+  return `<div class="wrap" style="padding:30px 18px;max-width:760px" data-notr><h1 class="h2">${T[0]}</h1><div style="color:#d4d4d8;line-height:1.6">${T[1]}</div></div>`;
+}
+/* ---- staff / admin ---- */
+function vKey(title){return `<div class="wrap" style="padding:50px 18px;max-width:460px"><h1 class="h2">${title}</h1><label class="f"><span>Ключ доступа</span><input id="kIn" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')liveLogin()"></label><button class="btn pri w" onclick="liveLogin()">Войти</button></div>`}
+async function liveLogin(){
+  live.key=$('#kIn').value.trim();
+  try{const r=await api('GET','staff/me',null,true);live.role=ui.role=r.role;try{sessionStorage.setItem('oe_key',live.key)}catch(e){}render()}
+  catch(e){live.key=null;toast(e.code==='UNAUTHORIZED'?'Неверный ключ':e.message,true)}
+}
+function liveLogout(){live.key=live.role=live.adm=null;ui.role='customer';try{sessionStorage.removeItem('oe_key')}catch(e){}go('#/')}
+async function doScanLive(v){
+  try{const r=await api('POST','staff/validate',{qr:String(v||'').trim(),scrId:ui.staffScr},true),i=r.info,s=i&&S.scr(i.scrId);
+    scanRes={res:r.res,info:i?{number:i.number,title:s?s.title:'',startsAt:s?s.startsAt:'',hall:'Зал '+i.hall,r:i.r,n:i.n,status:i.status,checkedAt:i.checkedAt}:null};
+    if(navigator.vibrate)try{navigator.vibrate(r.res==='ACCEPTED'?40:[60,40,60])}catch(e){}
+  }catch(e){toast(e.message,true)}
+  render();const inp=$('#scanIn');if(inp){inp.value='';inp.focus()}
+}
+function vStaffLive(){
+  if(!live.role)return vKey('Вход для сотрудника');
+  if(!ui.staffScr||!S.scr(ui.staffScr))ui.staffScr=db.screenings[0].id;
+  return `<div class="wrap" style="padding:24px 18px;max-width:640px"><div class="between"><h1 class="h2" style="margin:0">Проверка билетов</h1><button class="btn sm ghost" onclick="liveLogout()">Выйти</button></div>
+   <label class="f mt"><span>Зал</span><select onchange="ui.staffScr=this.value;scanRes=null;render()">${db.screenings.map(s=>`<option value="${s.id}" ${s.id===ui.staffScr?'selected':''}>${esc(S.hall(s.hallId).name)} · ${fmtDate(s.startsAt)} ${fmtTime(s.startsAt)}</option>`).join('')}</select></label>
+   <div id="camwrap"></div><div class="row"><button class="btn pri" onclick="startCam()">📷 Сканировать камерой</button></div>
+   <div class="row mt"><input id="scanIn" placeholder="QR-код или номер билета BZT-XXXX-XXXX" style="flex:1;min-width:200px" onkeydown="if(event.key==='Enter')doScan(this.value)"><button class="btn" onclick="doScan($('#scanIn').value)">Проверить</button></div>
+   <div id="scanRes" class="mt">${scanResHTML()}</div></div>`;
+}
+async function admLoad(){live.adm=await api('GET','admin/overview',null,true);live.adm.at=Date.now()}
+async function admDo(p){try{await p;await admLoad();await syncState().catch(()=>{})}catch(e){toast(e.message,true)}render()}
+function admSet(patch,q){if(q&&!confirm(q))return;admDo(api('POST','admin/settings',patch,true).then(()=>toast('Сохранено')))}
+function admAct(orderId,action,q,noteId){const note=noteId?($('#'+noteId)||{}).value||'':'';if(q&&!confirm(q))return;admDo(api('POST','admin/order',{orderId,action,note},true).then(()=>toast('Готово')))}
+async function admShow(id){try{live.img[id]=await api('GET','admin/receipt?id='+encodeURIComponent(id),null,true)}catch(e){toast(e.message,true)}render()}
+const RS={ACCEPTED:['b-green','Принят'],REJECTED:['b-red','Не принят'],REVIEW:['b-yel','На проверке']};
+function vAdminLive(tab,id){
+  if(live.role!=='admin')return live.role==='staff'?`<div class="wrap" style="padding:50px 18px"><p>Нужен ключ администратора.</p><button class="btn" onclick="liveLogout()">Выйти</button></div>`:vKey('Вход для администратора');
+  if(!live.adm){admLoad().then(render,e=>{toast(e.message,true)});return `<div class="wrap" style="padding:40px 18px"><p class="muted">Загрузка…</p></div>`}
+  tab=tab||'main';const A=live.adm,st=A.settings,O=A.orders;
+  const tabs=`<div class="tabs">${[['main','Главное'],['orders','Заказы'],['receipts','Чеки для сверки']].map(([k,t])=>`<a href="#/admin/${k}" class="${tab===k||(tab==='order'&&k==='orders')?'on':''}">${t}</a>`).join('')}</div>`;
+  const rev=O.filter(o=>o.status==='PENDING_PAYMENT'&&o.review);
+  const stB=o=>o.status==='PENDING_PAYMENT'&&o.review?'<span class="badge b-yel">Чек на проверке</span>':badgeFor(o.status);
+  let b='';
+  if(tab==='main'){
+    const paid=O.filter(o=>o.status==='PAID'),tk=paid.flatMap(o=>o.tickets),card=(t,v,s)=>`<div class="card"><div class="muted small">${t}</div><div class="stat mt">${v}</div>${s?`<div class="tiny muted">${s}</div>`:''}</div>`;
+    const perHall=db.screenings.map(s=>{const k=S.counts(s.id);return `<tr><td>${esc(S.hall(s.hallId).name)}</td><td class="r">${paid.filter(o=>o.scrId===s.id).reduce((a,o)=>a+o.tickets.length,0)} / ${S.hall(s.hallId).seats.length}</td><td class="r"><label class="check" style="margin:0;justify-content:flex-end"><input type="checkbox" ${st.hallsOpen[s.id]?'checked':''} onchange="admSet({hallsOpen:Object.assign({},live.adm.settings.hallsOpen,{'${s.id}':this.checked})})"><span>в продаже</span></label></td></tr>`}).join('');
+    b=`<div class="card mb ${st.salesOpen?'r-ok':'r-warn'}" style="text-align:left"><div class="between"><div><b style="font-size:18px">${st.salesOpen?'Продажа открыта':'Продажа закрыта'}</b><div class="small">${st.salesOpen?'Покупатели могут бронировать места и загружать чеки.':'Сайт показывает залы и надпись «скоро откроется».'}</div></div>
+      <button class="btn ${st.salesOpen?'':'pri'}" onclick="admSet({salesOpen:${!st.salesOpen}},'${st.salesOpen?'Закрыть продажу?':'Открыть продажу для всех?'}')">${st.salesOpen?'Закрыть продажу':'Открыть продажу'}</button></div></div>
+    ${rev.length?`<div class="card mb r-warn" style="text-align:left"><b>Ждут ручной проверки: ${rev.length}</b><div class="mt">${rev.map(o=>`<a class="btn sm" style="margin:0 6px 6px 0" href="#/admin/order/${o.id}">${o.number} · ${money(o.total)}</a>`).join('')}</div></div>`:''}
+    <div class="grid g4">${card('Продано билетов',tk.length,'вошли в зал: '+tk.filter(t=>t.status==='USED').length)}${card('Оплаченных заказов',paid.length)}${card('Сумма по чекам',money(paid.reduce((a,o)=>a+o.total,0)))}${card('Ждут оплаты',O.filter(o=>o.status==='PENDING_PAYMENT'&&!o.review).length,'истекло / отменено: '+O.filter(o=>['EXPIRED','CANCELLED'].includes(o.status)).length)}</div>
+    <div class="grid g2 mt2"><div class="card"><h3 class="mb">Залы</h3><div class="tbl"><table><tr><th>Зал</th><th class="r">Продано</th><th class="r"></th></tr>${perHall}</table></div></div>
+    <div class="card"><h3 class="mb">Настройки</h3>
+      <div class="grid g2"><label class="f"><span>Цена билета, ₸</span><input id="aPrice" type="number" inputmode="numeric" value="${st.price}"></label><label class="f"><span>Бронь, минут</span><input id="aHold" type="number" inputmode="numeric" value="${st.holdMin}"></label></div>
+      <label class="f"><span>Номер Kaspi для перевода</span><input id="aKaspi" value="${esc(st.kaspi)}"></label>
+      <div class="grid g2"><label class="f"><span>Получатель (как в чеке)</span><input id="aRec" value="${esc(st.recipient)}"></label><label class="f"><span>Что искать в чеке</span><input id="aPat" value="${esc(st.recipientPattern)}"></label></div>
+      <button class="btn pri" onclick="admSet({price:$('#aPrice').value,holdMin:$('#aHold').value,kaspi:$('#aKaspi').value.trim(),recipient:$('#aRec').value.trim(),recipientPattern:$('#aPat').value.trim()})">Сохранить</button>
+      <p class="tiny muted mt">«Что искать в чеке» — часть имени получателя без первой буквы: программа иногда путает «Ө».</p></div></div>
+    <div class="row mt2"><button class="btn sm" onclick="admDo(Promise.resolve())">Обновить данные</button><button class="btn sm" onclick="admCsv('orders')">Скачать заказы (CSV)</button><button class="btn sm" onclick="admCsv('attendees')">Список зрителей (CSV)</button><a class="btn sm" href="/api/health?ocr=1" target="_blank" rel="noopener">Проверка сервера</a><button class="btn sm ghost" onclick="liveLogout()">Выйти</button></div>`;
+  }else if(tab==='orders'){
+    const q=(live.admQ||'').trim().toLowerCase(),qd=q.replace(/\D/g,'');
+    const list=O.filter(o=>(live.admSt==='all'||(live.admSt==='REVIEW'?o.status==='PENDING_PAYMENT'&&o.review:o.status===live.admSt))&&(!q||o.number.toLowerCase().includes(q)||o.customer.name.toLowerCase().includes(q)||(qd.length>=3&&o.customer.phone.includes(qd))));
+    b=`<div class="row mb"><input id="admQ" placeholder="Поиск: имя, телефон или номер заказа" value="${esc(live.admQ)}" oninput="live.admQ=this.value;clearTimeout(window._q);window._q=setTimeout(()=>{render();const i=$('#admQ');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},350)" style="flex:1;min-width:220px">
+     <select style="width:auto" onchange="live.admSt=this.value;render()"><option value="all">Все статусы</option>${[['PAID','Оплачен'],['PENDING_PAYMENT','Ожидает оплаты'],['REVIEW','Чек на проверке'],['EXPIRED','Бронь истекла'],['CANCELLED','Отменён']].map(([k,t])=>`<option value="${k}" ${live.admSt===k?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div class="card tbl"><table><tr><th>Заказ</th><th>Клиент</th><th>Места</th><th class="r">Сумма</th><th>Статус</th></tr>${list.slice(0,300).map(o=>`<tr onclick="go('#/admin/order/${o.id}')" style="cursor:pointer"><td><b>${o.number}</b><div class="tiny muted">${fmtTs(o.created)}</div></td><td>${esc(o.customer.name)}<div class="tiny muted">${fmtPhone(o.customer.phone)}</div></td><td class="small">${esc(S.hall(S.scr(o.scrId).hallId).name)}<div class="tiny muted">${o.items.map(i=>'Р'+i.r+'·М'+i.n).join(', ')}</div></td><td class="r">${money(o.total)}</td><td>${stB(o)}</td></tr>`).join('')||'<tr><td class="muted" colspan="5">Ничего не найдено</td></tr>'}</table></div><p class="tiny muted mt">Показано ${Math.min(300,list.length)} из ${list.length}.</p>`;
+  }else if(tab==='order'){
+    const o=O.find(x=>x.id===id);if(!o)return `<div class="wrap" style="padding:30px 18px">${tabs}<p>Заказ не найден.</p></div>`;
+    const rcs=A.receipts.filter(r=>r.order_id===o.id);
+    b=`<a href="#/admin/orders" class="muted small" style="text-decoration:none">← Все заказы</a>
+    <div class="card mt"><div class="between"><div><h3 style="font-size:22px">${o.number}</h3><div class="muted small">${fmtTs(o.created)}${o.paidAt?' · оплачен '+fmtTs(o.paidAt):''}</div></div>${stB(o)}</div>
+     <div class="grid g2 mt"><div><div class="muted small">Клиент</div>${esc(o.customer.name)}<br>${fmtPhone(o.customer.phone)}${o.customer.email?'<br>'+esc(o.customer.email):''}</div><div><div class="muted small">Места</div>${esc(S.hall(S.scr(o.scrId).hallId).name)}: ${o.items.map(i=>'ряд '+i.r+', место '+i.n).join('; ')}<br><b>${money(o.total)}</b></div></div>
+     ${o.cancelReason?`<p class="small" style="color:#fca5a5">Причина отмены: ${esc(o.cancelReason)}</p>`:''}
+     ${o.tickets.length?`<div class="tbl mt"><table>${o.tickets.map(t=>`<tr><td class="tiny">${t.number}</td><td>${badgeFor(t.status)}</td><td class="tiny">${t.checkedAt?'вход '+fmtTs(t.checkedAt):''}</td></tr>`).join('')}</table></div>`:''}</div>
+    <div class="card mt"><h3 class="mb">Чеки (${rcs.length})</h3>${rcs.map(r=>`<div style="border-top:1px solid var(--line);padding:12px 0"><div class="between"><div class="small"><span class="badge ${RS[r.status][0]}">${RS[r.status][1]}</span> · загружен ${fmtTs(r.created)}</div>${r.has_image?`<button class="btn sm" onclick="admShow('${r.id}')">Показать чек</button>`:''}</div>
+      <div class="small mt">№ квитанции: <b>${r.number||'—'}</b> · сумма: <b>${r.amount!=null?money(r.amount):'—'}</b> · время в чеке: <b>${r.paid_at?fmtTs(r.paid_at):'—'}</b>${r.sender?' · отправитель: <b>'+esc(r.sender)+'</b>':''}</div>
+      ${r.reason?`<div class="small" style="color:#fca5a5">${r.reason.split(',').map(p=>problemText(p,null,true)).join('; ')}</div>`:''}
+      ${live.img[r.id]?`<img src="${live.img[r.id].image}" alt="Чек" style="max-width:340px;width:100%;border-radius:10px;border:1px solid var(--line);margin-top:10px;display:block"><details class="tiny muted mt"><summary>Что прочитала программа</summary><pre style="white-space:pre-wrap">${esc(live.img[r.id].ocr_text||'')}</pre></details>`:''}</div>`).join('')||'<p class="muted small">Чеков нет.</p>'}</div>
+    <div class="card mt"><h3 class="mb">Действия</h3>
+     ${['PENDING_PAYMENT','EXPIRED'].includes(o.status)?`<p class="small muted">Подтверждайте только если деньги видны в Kaspi.</p><button class="btn pri" onclick="admAct('${o.id}','approve','Деньги по этому заказу видны в Kaspi? Билеты будут выданы.')">Подтвердить оплату и выдать билеты</button>`:''}
+     ${o.status==='PENDING_PAYMENT'&&o.review?`<div class="row mt"><input id="rjNote" placeholder="Причина (её увидит клиент)" style="flex:1;min-width:200px"><button class="btn" onclick="admAct('${o.id}','rejectReview',null,'rjNote')">Отклонить чек</button></div>`:''}
+     ${o.status!=='CANCELLED'?`<div class="row mt2"><input id="cnNote" placeholder="Причина отмены" style="flex:1;min-width:200px"><button class="btn" style="border-color:#7f1d1d;color:#fca5a5" onclick="admAct('${o.id}','cancel','Отменить заказ? Билеты перестанут работать, места вернутся в продажу.','cnNote')">Отменить заказ и билеты</button></div>`:''}
+     <div class="row mt2"><a class="btn sm" href="#/order/${o.token}">Страница клиента</a></div></div>`;
+  }else if(tab==='receipts'){
+    const acc=A.receipts.filter(r=>r.status==='ACCEPTED').sort((a,b)=>(a.paid_at||0)-(b.paid_at||0));
+    b=`<p class="muted small">Перед показом сравните этот список с историей переводов в Kaspi. Если перевода нет — откройте заказ и отмените его: билеты перестанут работать.</p>
+    <div class="row mb"><button class="btn sm" onclick="admCsv('receipts')">Скачать список (CSV)</button><span class="small muted">Принято чеков: ${acc.length} · на сумму ${money(acc.reduce((a,r)=>a+(r.amount||0),0))}</span></div>
+    <div class="card tbl"><table><tr><th>Время в чеке</th><th class="r">Сумма</th><th>№ квитанции</th><th>Отправитель</th><th>Заказ</th></tr>${acc.map(r=>{const o=O.find(x=>x.id===r.order_id);return `<tr><td class="small">${r.paid_at?fmtTs(r.paid_at):'вручную'}</td><td class="r">${r.amount!=null?money(r.amount):'—'}</td><td class="tiny">${r.number||'—'}</td><td class="small">${esc(r.sender||'')}</td><td class="small">${o?`<a href="#/admin/order/${o.id}">${o.number}</a><div class="tiny muted">${esc(o.customer.name)} · ${stB(o)}</div>`:''}</td></tr>`}).join('')||'<tr><td class="muted" colspan="5">Принятых чеков пока нет</td></tr>'}</table></div>`;
+  }
+  return `<div class="wrap" style="padding:22px 18px 40px"><div class="between"><h1 class="h2" style="margin:0">Админ-панель</h1><span class="badge b-red">ADMIN</span></div>${tabs}${b}</div>`;
+}
+function admCsv(kind){
+  const A=live.adm,O=A.orders,hall=o=>S.hall(S.scr(o.scrId).hallId).name;
+  if(kind==='orders')csvDownload('orkenevents_orders.csv',[['Заказ','Создан','Клиент','Телефон','Email','Зал','Места','Сумма','Статус'],...O.map(o=>[o.number,fmtTs(o.created),o.customer.name,o.customer.phone,o.customer.email,hall(o),o.items.map(i=>'Р'+i.r+'М'+i.n).join(' '),o.total,ru(o.status)+(o.review?' (чек на проверке)':'')])]);
+  else if(kind==='attendees'){const rows=[];O.filter(o=>o.status==='PAID').forEach(o=>o.tickets.forEach(t=>{const it=o.items.find(i=>i.id===t.itemId);rows.push([hall(o),it.r,it.n,o.customer.name,o.customer.phone,t.number,ru(t.status),o.number])}));rows.sort((a,b)=>String(a[0]).localeCompare(b[0])||a[1]-b[1]||a[2]-b[2]);csvDownload('orkenevents_attendees.csv',[['Зал','Ряд','Место','Имя','Телефон','Билет','Статус','Заказ'],...rows])}
+  else csvDownload('orkenevents_receipts.csv',[['Время в чеке','Сумма','№ квитанции','Отправитель','Заказ','Клиент','Телефон','Статус заказа'],...A.receipts.filter(r=>r.status==='ACCEPTED').map(r=>{const o=O.find(x=>x.id===r.order_id)||{customer:{}};return[r.paid_at?fmtTs(r.paid_at):'',r.amount,r.number?"'"+r.number:'',r.sender,o.number,o.customer.name,o.customer.phone,ru(o.status)]})]);
+}
+
 /* ================================ START ================================ */
 const DEMOBAR0=$('#demobar').innerHTML,FOOT0=$('footer').innerHTML;
 load();
 if(PV){ui.role='customer';document.body.classList.add('pv')}
+if(LIVE){document.body.classList.add('live');liveStart()}
 document.documentElement.lang=ui.lang;
 render();
 </script>

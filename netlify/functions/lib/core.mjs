@@ -166,7 +166,7 @@ const payStmts = (o, now) => [
  * Buyer uploads a receipt. We read it, compare with the order and, if everything matches, issue tickets at once.
  * This cannot prove that money arrived — a forged picture passes too. The admin can cancel tickets later.
  */
-export async function submitReceipt(token, image, now, read = readReceipt) {
+export async function submitReceipt(token, image, now, read = readReceipt, manual = false) {
   await cleanup(now);
   const o = await orderByToken(token, now);
   if (o.status === 'EXPIRED') throw new ApiError(410, 'HOLD_EXPIRED', 'Время брони истекло, места освобождены');
@@ -174,9 +174,21 @@ export async function submitReceipt(token, image, now, read = readReceipt) {
   if (o.review) throw new ApiError(409, 'IN_REVIEW', 'Чек уже на проверке');
   if (o.attempts >= 8) throw new ApiError(429, 'TOO_MANY_ATTEMPTS', 'Слишком много попыток. Отправьте чек на ручную проверку.');
   const s = await getSettings();
-  let r;
-  try { r = await read(image, s.recipientPattern); }
-  catch (e) { if (e.code === 'BAD_IMAGE') throw new ApiError(400, 'BAD_IMAGE', e.message); throw new ApiError(503, 'OCR_FAILED', 'Не удалось прочитать чек. Попробуйте ещё раз.'); }
+  if (typeof image !== 'string' || !/^data:image\/(jpeg|jpg|png);base64,/.test(image) || image.length > 4_000_000) throw new ApiError(400, 'BAD_IMAGE', 'Нужен скриншот или PDF чека');
+  let r = null;
+  if (!manual) {
+    try { r = await read(image, s.recipientPattern); }
+    catch (e) { if (e.code === 'BAD_IMAGE') throw new ApiError(400, 'BAD_IMAGE', e.message); console.error('receipt reader failed', e); }
+  }
+  if (!r) { // the reader is unavailable: keep the picture and let a human decide; seats stay held for 24 hours
+    const exp = now + 24 * 3600000;
+    await tx([
+      [`INSERT INTO receipts(id,order_id,status,reason,image,created) VALUES($1,$2,'REVIEW','MANUAL',$3,$4)`, [uid('rc'), o.id, image, now]],
+      [`UPDATE orders SET review=true, hold_exp=$2 WHERE id=$1 AND status='PENDING_PAYMENT'`, [o.id, exp]],
+      [`UPDATE seat_locks SET exp=$2 WHERE order_id=$1 AND status='HELD'`, [o.id, exp]],
+    ]);
+    return { ok: false, review: true, order: await orderByToken(token, now) };
+  }
   let problems = checkReceipt(r, o, now);
   const rid = uid('rc');
   const save = (status, reason) => [`INSERT INTO receipts(id,order_id,number,amount,paid_at,sender,status,reason,ocr_text,image,created) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,

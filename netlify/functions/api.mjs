@@ -56,7 +56,7 @@ export default async function handler(req, context) {
     if (req.method === 'GET' && route === 'orders') return json(200, { now, orders: await core.getOrdersByTokens((url.searchParams.get('tokens') || '').split(','), now) });
     if (req.method === 'POST' && route === 'orders') { await core.cleanup(now); return json(201, { order: await core.createOrder(body, now, ip) }); }
     if (req.method === 'POST' && route === 'orders/cancel') return json(200, { order: await core.cancelByCustomer(body.token, now) });
-    if (req.method === 'POST' && route === 'receipt') return json(200, await core.submitReceipt(body.token, body.image, now));
+    if (req.method === 'POST' && route === 'receipt') return json(200, await core.submitReceipt(body.token, body.image, now, undefined, body.manual === true));
     if (req.method === 'POST' && route === 'receipt/review') return json(200, { order: await core.requestReview(body.token, now) });
 
     if (req.method === 'GET' && route === 'admin/overview') { need(req, 'admin'); return json(200, await core.adminOverview(now)); }

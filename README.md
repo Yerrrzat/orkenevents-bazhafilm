@@ -6,7 +6,8 @@ Ticket site for the group screening of «Бажа» (Arman Asia Park, Astana).
 
 | Path | What it is |
 |---|---|
-| `public/index.html` | The whole site in one file (Kazakh / Russian). Served by Netlify. |
+| `public/index.html` | The whole site in one file (Kazakh / Russian): halls, booking, receipt upload, tickets, admin panel (`#/admin`), entrance scanner (`#/staff`). |
+| `public/vendor/` | pdf.js — turns an uploaded PDF receipt into a picture in the browser. |
 | `netlify/functions/api.mjs` | Server API (`/api/*`): seat holds, orders, receipt check, tickets, admin, entrance scan. |
 | `netlify/functions/lib/` | Rules (`core.mjs`), receipt reader (`receipt.mjs`), database layer (`db.mjs`), hall layouts (`halls.mjs`). |
 | `netlify/functions/data/` | Language data for reading receipts and a self-test picture. |

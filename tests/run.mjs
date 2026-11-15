@@ -66,6 +66,17 @@ ok('admin rejects review → buyer can retry', !b2.review && b2.status === 'PEND
 b2 = await core.adminAction({ orderId: B.id, action: 'approve' }, 'admin', T0 + 160000);
 ok('admin approves manually → paid with ticket', b2.status === 'PAID' && b2.tickets.length === 1);
 
+// reader unavailable or buyer asks for a human → picture is kept, order waits for the admin
+const M1 = await core.createOrder(base({ seatIds: ['h3r1s1'], scrId: 'scr3', phone: '87010000020' }), T0, '20');
+let m = await core.submitReceipt(M1.token, IMG, T0 + 1000, async () => { throw new Error('engine down'); });
+ok('reader crash → order goes to manual review', !m.ok && m.review && m.order.review && m.order.holdExp === T0 + 1000 + 24 * 3600000);
+const M2 = await core.createOrder(base({ seatIds: ['h3r1s2'], scrId: 'scr3', phone: '87010000021' }), T0, '21');
+m = await core.submitReceipt(M2.token, IMG, T0 + 1000, fake({}), true);
+ok('manual flag → review without reading', m.review && m.order.lastReceipt.status === 'REVIEW');
+const M3 = await core.createOrder(base({ seatIds: ['h3r1s3'], scrId: 'scr3', phone: '87010000022' }), T0, '22');
+ok('not an image → refused', (await code(() => core.submitReceipt(M3.token, 'hello', T0 + 1000, fake({})))) === 'BAD_IMAGE');
+ok('admin approves manual review → ticket', (await core.adminAction({ orderId: M1.id, action: 'approve' }, 'admin', T0 + 5000)).tickets.length === 1);
+
 // expiry
 const C = await core.createOrder(base({ seatIds: ['h1r6s1', 'h1r6s2'], phone: '87010000010' }), T0, '10');
 const late = T0 + 16 * 60000;
