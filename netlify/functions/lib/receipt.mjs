@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import jpeg from 'jpeg-js';
 import { PNG } from 'pngjs';
 
+export const ocrStats = { initMs: null, langs: null, dataDir: null };
 // The function may be bundled into one file, so look for the data folder in a few places.
 function findDataDir() {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -13,13 +14,18 @@ function findDataDir() {
   return tries.find((d) => fs.existsSync(path.join(d, 'rus.traineddata.gz'))) || tries[0];
 }
 export const DATA_DIR = findDataDir();
+ocrStats.dataDir = DATA_DIR + (fs.existsSync(path.join(DATA_DIR, 'rus.traineddata.gz')) ? ' (found)' : ' (MISSING)');
 let workerPromise = null;
 
 async function getWorker() {
   if (!workerPromise) {
     workerPromise = (async () => {
       const { createWorker } = await import('tesseract.js');
-      const w = await createWorker(['rus', 'kaz'], 1, { langPath: DATA_DIR, cachePath: '/tmp', gzip: true });
+      const t0 = Date.now();
+      // Russian data alone reads everything we check (digits, date, amount, receiver); a second language doubles start-up time.
+      const langs = (process.env.OCR_LANGS || 'rus').split(',');
+      const w = await createWorker(langs, 1, { langPath: DATA_DIR, cachePath: '/tmp', gzip: true });
+      ocrStats.initMs = Date.now() - t0; ocrStats.langs = langs.join('+');
       await w.setParameters({ tessedit_pageseg_mode: '6' });
       return w;
     })().catch((e) => { workerPromise = null; throw e; });

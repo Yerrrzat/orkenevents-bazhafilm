@@ -21,12 +21,17 @@ const need = (req, who) => { const r = role(req); if (r !== 'admin' && !(who ===
 let selfTest = null; // OCR self-test result, computed once per server start
 async function ocrSelfTest() {
   if (!selfTest) selfTest = (async () => {
-    const { readReceipt, DATA_DIR } = await import('./lib/receipt.mjs');
-    const file = path.join(DATA_DIR, 'selftest.jpg');
-    const t0 = Date.now(), r = await readReceipt(fs.readFileSync(file), 'ркен М');
-    return { ok: r.number === '123456789012345678' && r.amount === 2000 && r.recipientOk && !!r.paidAt, ms: Date.now() - t0, number: r.number, amount: r.amount, recipientOk: r.recipientOk, date: r.paidAtText };
-  })().catch((e) => { selfTest = null; return { ok: false, error: String(e && e.message || e).slice(0, 300) }; });
-  return selfTest;
+    const { readReceipt, DATA_DIR, ocrStats } = await import('./lib/receipt.mjs');
+    const t0 = Date.now();
+    try {
+      const r = await readReceipt(fs.readFileSync(path.join(DATA_DIR, 'selftest.jpg')), 'ркен М');
+      return { ok: r.number === '123456789012345678' && r.amount === 2000 && r.recipientOk && !!r.paidAt, ms: Date.now() - t0, ...ocrStats, number: r.number, amount: r.amount, recipientOk: r.recipientOk, date: r.paidAtText };
+    } catch (e) { return { ok: false, ms: Date.now() - t0, ...ocrStats, error: String((e && e.stack) || e).slice(0, 600) }; }
+  })();
+  // answer before the platform's time limit so we always get a readable result
+  const res = await Promise.race([selfTest, new Promise((r) => setTimeout(() => r({ ok: false, pending: true, note: 'still starting after 8 s — open this link again' }), 8000))]);
+  if (res.ok === false && !res.pending) selfTest = null;
+  return res;
 }
 
 export default async function handler(req, context) {
