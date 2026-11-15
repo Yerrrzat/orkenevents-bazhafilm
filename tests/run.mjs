@@ -108,6 +108,14 @@ ok('10 scanners at once: exactly 1 accepts', par.filter((x) => x.res === 'ACCEPT
   const again = await core.validateTicket({ qr: 'BZ1.' + pd.tickets[0].token }, 'staff', t + 4000);
   ok('cancelled ticket is refused at the entrance', again.res !== 'ACCEPTED', again.res);
 }
+// receipt number wrapped onto a second line: its tail must not be taken for the amount
+{
+  const { parseReceipt } = await import('../netlify/functions/lib/receipt.mjs');
+  const a = parseReceipt('Перевод успешно совершен\n\nӨркен М.\n\n№ квитанции 9098938 76336095\n864\n\nДата и время 16.11.2026 00:53\n');
+  ok('wrapped number: joined, tail is not an amount', a.number === '909893876336095864' && a.amount === null, JSON.stringify([a.number, a.amount]));
+  const b = parseReceipt('Перевод успешно совершен\n2 000 т\n\nӨркен М.\n\n№ квитанции 9098983016748923\n56\n\nДата и время 16.11.2026 01:11\n');
+  ok('wrapped number with amount above', b.number === '909898301674892356' && b.amount === 2000, JSON.stringify([b.number, b.amount]));
+}
 // fake receipt found later → admin cancels, ticket stops working, seat returns
 const E = await core.createOrder(base({ seatIds: ['h1r7s1'], phone: '87010000012' }), late, '12');
 const ePaid = (await core.submitReceipt(E.token, IMG, late + 1000, fake({ number: '444444444444444444', paidAt: late }))).order;

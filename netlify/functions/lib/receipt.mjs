@@ -95,7 +95,16 @@ function findAmount(text) {
 export function parseReceipt(text, recipientPattern = 'ркен М') {
   const t = text.replace(/ /g, ' ');
   let number = null;
-  for (const line of t.split('\n')) { const m = line.match(/(\d[\d ]{13,24}\d)\s*$/); if (m) { const d = digits(m[1]); if (d.length >= 15 && d.length <= 20) { number = d; break; } } }
+  // a long receipt number is often wrapped: its last digits stand alone on the next line
+  const lines = t.split('\n'), skip = new Set();
+  for (let i = 0; i < lines.length && !number; i++) {
+    const m = lines[i].match(/(\d[\d ]{10,24}\d)\s*$/); if (!m) continue;
+    let d = digits(m[1]), j = i + 1; while (j < lines.length && !lines[j].trim()) j++;
+    const tail = j < lines.length && /^\s*\d{1,6}\s*$/.test(lines[j]) ? lines[j].trim() : '';
+    if (tail && d.length >= 12 && d.length + tail.length <= 20) { d += tail; skip.add(j); }
+    if (d.length >= 15 && d.length <= 20) number = d; else skip.clear();
+  }
+  const rest = lines.filter((_, i) => !skip.has(i)).join('\n');
   let paidAt = null, paidAtText = null;
   const dm = t.match(/(\d{2})[.,](\d{2})[.,](20\d{2})\s+(\d{1,2})[:.](\d{2})/);
   if (dm) {
@@ -107,7 +116,7 @@ export function parseReceipt(text, recipientPattern = 'ркен М') {
   const sm = t.match(/(?:Отправитель|Жіберуші|Жiберушi)\s+(.+)/i);
   const success = /успешно\s+совершен|сәтті|сатти|сәттi/i.test(t);
   const failedWord = /отклон|не выполнен|ошибк|отмен[её]н|қабылданбады|орындалмады/i.test(t);
-  return { number, paidAt, paidAtText, amount: findAmount(t), recipientOk, sender: sm ? sm[1].trim().slice(0, 60) : null, success, failedWord };
+  return { number, paidAt, paidAtText, amount: findAmount(rest), recipientOk, sender: sm ? sm[1].trim().slice(0, 60) : null, success, failedWord };
 }
 
 /** Full pipeline: image -> OCR (two passes) -> fields. */
