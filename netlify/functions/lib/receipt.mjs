@@ -2,11 +2,13 @@
 // The receipt is a picture (Kaspi's PDF has no text layer), so we use OCR.
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import jpeg from 'jpeg-js';
 import { PNG } from 'pngjs';
 
-export const ocrStats = { initMs: null, langs: null, dataDir: null };
+export const ocrStats = { initMs: null, engine: null, dataDir: null };
 // The function may be bundled into one file, so look for the data folder in a few places.
 function findDataDir() {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -15,22 +17,32 @@ function findDataDir() {
 }
 export const DATA_DIR = findDataDir();
 ocrStats.dataDir = DATA_DIR + (fs.existsSync(path.join(DATA_DIR, 'rus.traineddata.gz')) ? ' (found)' : ' (MISSING)');
-let workerPromise = null;
-
-async function getWorker() {
-  if (!workerPromise) {
-    workerPromise = (async () => {
-      const { createWorker } = await import('tesseract.js');
-      const t0 = Date.now();
-      // Russian data alone reads everything we check (digits, date, amount, receiver); a second language doubles start-up time.
-      const langs = (process.env.OCR_LANGS || 'rus').split(',');
-      const w = await createWorker(langs, 1, { langPath: DATA_DIR, cachePath: '/tmp', gzip: true });
-      ocrStats.initMs = Date.now() - t0; ocrStats.langs = langs.join('+');
-      await w.setParameters({ tessedit_pageseg_mode: '6' });
-      return w;
-    })().catch((e) => { workerPromise = null; throw e; });
-  }
-  return workerPromise;
+// The recognition engine (Tesseract compiled to WebAssembly) runs right here, in the same process.
+// No worker threads and no downloads: an error can always be caught and reported.
+let enginePromise = null;
+function getEngine() {
+  if (!enginePromise) enginePromise = (async () => {
+    const t0 = Date.now(), require = createRequire(import.meta.url);
+    let factory, variant = 'simd';
+    try { factory = require('tesseract.js-core/tesseract-core-simd-lstm.wasm.js'); }
+    catch (e) { variant = 'plain'; factory = require('tesseract.js-core/tesseract-core-lstm.wasm.js'); }
+    let M;
+    try { M = await factory({}); } catch (e) { variant = 'plain'; M = await require('tesseract.js-core/tesseract-core-lstm.wasm.js')({}); }
+    M.FS.writeFile('rus.traineddata', zlib.gunzipSync(fs.readFileSync(path.join(DATA_DIR, 'rus.traineddata.gz'))));
+    const api = new M.TessBaseAPI();
+    if (api.Init(null, 'rus', 1) === -1) throw new Error('OCR engine failed to start');   // 1 = LSTM only
+    api.SetVariable('tessedit_pageseg_mode', '6');                                        // one uniform block of text
+    ocrStats.initMs = Date.now() - t0; ocrStats.engine = variant;
+    return { M, api };
+  })().catch((e) => { enginePromise = null; throw e; });
+  return enginePromise;
+}
+async function recognize(png) {
+  const { M, api } = await getEngine();
+  M.FS.writeFile('/input', png);
+  if (api.SetImageFile(1, 0) === 1) throw new Error('OCR engine could not read the image');
+  api.Recognize(null);
+  return api.GetUTF8Text() || '';
 }
 
 /** dataURL or Buffer (JPEG/PNG) -> { w, h, gray: Uint8Array } */
@@ -101,15 +113,13 @@ export function parseReceipt(text, recipientPattern = 'ркен М') {
 /** Full pipeline: image -> OCR (two passes) -> fields. */
 export async function readReceipt(input, recipientPattern) {
   const img = decodeImage(input);
-  const worker = await getWorker();
   const scale = img.w < 900 ? Math.min(2.5, 1300 / img.w) : 1;
-  const full = (await worker.recognize(toBinaryPng(img, undefined, scale))).data.text;
+  const full = await recognize(toBinaryPng(img, undefined, scale));
   let text = full, parsed = parseReceipt(full, recipientPattern);
-  if (parsed.amount == null || !parsed.success) {
+  if (parsed.amount == null) {
     // the amount sits in a coloured band at the top: read the upper half again, enlarged
     const top = { x: 0, y: 0, w: img.w, h: Math.round(img.h * 0.5) };
-    const s2 = Math.min(3, Math.max(1.5, 2200 / img.w));
-    const extra = (await worker.recognize(toBinaryPng(img, top, s2))).data.text;
+    const extra = await recognize(toBinaryPng(img, top, Math.min(3, Math.max(1.5, 2200 / img.w))));
     text = extra + '\n' + full; parsed = parseReceipt(text, recipientPattern);
   }
   return { ...parsed, text: text.slice(0, 4000) };

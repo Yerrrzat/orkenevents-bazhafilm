@@ -5,7 +5,8 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
-  external_node_modules = ["tesseract.js"]            # text recognition for receipts (uses WebAssembly files)
+  # libraries are shipped as they are (not merged into one file) — this is the most predictable way to run them
+  external_node_modules = ["tesseract.js-core", "pngjs", "jpeg-js", "@neondatabase/serverless"]
   included_files = ["netlify/functions/data/**"]      # language data + self-test picture
 
 [[headers]]
