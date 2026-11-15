@@ -123,8 +123,9 @@ export async function createOrder(inp, now, ip) {
   const email = String(inp.email || '').trim().slice(0, 120);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) throw new ApiError(400, 'VALIDATION_ERROR', 'Укажите email — на него придут билеты');
   if (!inp.offer || !inp.pd) throw new ApiError(400, 'VALIDATION_ERROR', 'Нужно согласие с офертой и на обработку персональных данных');
-  const busy = await q(`SELECT count(*)::int AS c FROM orders WHERE status='PENDING_PAYMENT' AND hold_exp>$1 AND (phone=$2 OR ip=$3)`, [now, phone, ip || '-']);
-  if (busy[0].c >= 3) throw new ApiError(429, 'TOO_MANY_ORDERS', 'У вас уже есть неоплаченные заказы. Оплатите или отмените их.');
+  // per phone: 3 unpaid orders. Per address: 20 — mobile operators put many phones behind one address, so a tight limit would block honest buyers
+  const busy = await q(`SELECT count(*) FILTER (WHERE phone=$2)::int AS c, count(*) FILTER (WHERE ip=$3)::int AS i FROM orders WHERE status='PENDING_PAYMENT' AND hold_exp>$1 AND (phone=$2 OR ip=$3)`, [now, phone, ip || '-']);
+  if (busy[0].c >= 3 || busy[0].i >= 20) throw new ApiError(429, 'TOO_MANY_ORDERS', 'У вас уже есть неоплаченные заказы. Оплатите или отмените их.');
 
   const id = uid('ord'), token = rnd(24), number = 'BZ-' + s.startsAt.slice(2, 10).replace(/-/g, '') + '-' + code(4);
   const items = seatIds.map((sid) => ({ id: uid('itm'), seatId: sid, r: scr.seats.get(sid).r, n: scr.seats.get(sid).n, cat: 'STANDARD', price: s.price, status: 'ACTIVE' }));
