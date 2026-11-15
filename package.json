@@ -10,6 +10,7 @@
   "dependencies": {
     "@neondatabase/serverless": "1.2.1",
     "jpeg-js": "0.4.4",
+    "nodemailer": "6.10.1",
     "pngjs": "7.0.0",
     "tesseract.js-core": "7.0.0"
   },

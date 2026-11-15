@@ -2943,7 +2943,7 @@ const KK={
 'ЭКРАН':'ЭКРАН','Вход':'Кіру','Обычное':'Қарапайым','VIP':'VIP','Для людей с инвалидностью':'Мүгедектігі бар адамдарға',
 'Подсказка: на телефоне схему можно прокручивать пальцем и увеличивать кнопкой «+».':'Кеңес: телефонда сызбаны саусақпен жылжытып, «+» батырмасымен үлкейтуге болады.',
 'Места не выбраны':'Орын таңдалмаған','Далее':'Әрі қарай','Одно из выбранных мест только что заняли':'Таңдалған орындардың бірін жаңа ғана басқа біреу алды',
-'Изменить места':'Орындарды өзгерту','Контактные данные':'Байланыс деректері','Имя и фамилия *':'Аты-жөніңіз *','Телефон *':'Телефон *','Email — пришлём билеты (необязательно)':'Email — билеттерді жібереміз (міндетті емес)',
+'Изменить места':'Орындарды өзгерту','Контактные данные':'Байланыс деректері','Имя и фамилия *':'Аты-жөніңіз *','Email — пришлём билеты *':'Email — билеттерді жібереміз *','Укажите email — на него придут билеты':'Email көрсетіңіз — билеттер соған келеді','Телефон *':'Телефон *','Email — пришлём билеты (необязательно)':'Email — билеттерді жібереміз (міндетті емес)',
 'Забронировать места и проверить заказ':'Орындарды брондап, тапсырысты тексеру',
 'Нет ключа идемпотентности':'Идемпотенттік кілті жоқ','Сеанс не найден':'Сеанс табылмады','Продажа на этот сеанс закрыта':'Бұл сеансқа сату жабық','Продажа на этот сеанс закрыта.':'Бұл сеансқа сату жабық.',
 'Выберите хотя бы одно место':'Кемінде бір орын таңдаңыз','Укажите имя и фамилию':'Аты-жөніңізді көрсетіңіз','Телефон в формате +7 7XX XXX XX XX':'Телефон форматы: +7 7XX XXX XX XX','Проверьте email':'Email-ді тексеріңіз',
@@ -3338,7 +3338,7 @@ function vContacts(scr){
    <h3 class="mb">Контактные данные</h3>
    ${LIVE?`<label class="f"><span>Номер телефона *</span><input id="fPhone" type="tel" inputmode="tel" autocomplete="tel" value="${esc(f.phone||'+7 ')}" oninput="phoneMask(this);ui.form.phone=this.value"></label>`:''}
    <label class="f"><span>Имя и фамилия *</span><input id="fName" autocomplete="name" value="${esc(f.name)}" oninput="ui.form.name=this.value;this.style.borderColor=''"></label>
-   <label class="f"><span>Email — пришлём билеты (необязательно)</span><input id="fEmail" type="email" inputmode="email" autocomplete="email" value="${esc(f.email)}" oninput="ui.form.email=this.value"></label>
+   <label class="f"><span>${LIVE?'Email — пришлём билеты *':'Email — пришлём билеты (необязательно)'}</span><input id="fEmail" type="email" inputmode="email" autocomplete="email" value="${esc(f.email)}" oninput="ui.form.email=this.value;this.style.borderColor=''"></label>
    <label class="check"><input type="checkbox" ${f.offer?'checked':''} onchange="ui.form.offer=this.checked"><span data-notr>${L('Я принимаю <a href="#/legal/offer">публичную оферту</a>. Билеты возврату не подлежат.','<a href="#/legal/offer">Жария офертаны</a> қабылдаймын. Билеттер қайтарылмайды.')}</span></label>
    <label class="check"><input type="checkbox" ${f.pd?'checked':''} onchange="ui.form.pd=this.checked"><span data-notr>${L('Согласен(на) на обработку персональных данных (<a href="#/legal/privacy">политика</a>)','Жеке деректерімді өңдеуге келісемін (<a href="#/legal/privacy">саясат</a>)')}</span></label>
    <button class="btn pri w mt" id="bookBtn" onclick="submitOrder()">${LIVE?'Забронировать места':'Забронировать и получить счёт Kaspi'}</button>
@@ -3859,6 +3859,7 @@ async function liveTick(){
 }
 const ordSigLive=o=>o.status+'|'+o.review+'|'+o.attempts+'|'+o.tickets.length;
 async function submitOrderLive(){
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test((ui.form.email||'').trim())){const e=$('#fEmail');if(e){e.style.borderColor='#ef4444';e.focus()}return toast(trS('Укажите email — на него придут билеты'),true)}
   const scr=S.scr(ui.selScr);if(!ui.idem)ui.idem=uid('idem');const btn=$('#bookBtn');if(btn)btn.disabled=true;
   try{
     const r=await api('POST','orders',{idem:ui.idem,scrId:scr.id,seatIds:ui.sel,name:ui.form.name,phone:ui.form.phone,email:ui.form.email,offer:ui.form.offer,pd:ui.form.pd});
@@ -3949,6 +3950,7 @@ function vOrderLive(token){
   }else if(o.status==='PAID'){
     step=4;
     body=`<div class="result r-ok mt"><div class="big">Оплата подтверждена</div><div class="small">Ваши билеты ниже. Покажите QR-код на входе — каждый действует один раз.</div></div>
+    ${o.customer.email&&o.mailAt?`<p class="small mt" data-notr style="color:#86efac">${L('Билеты отправлены на почту','Билеттер поштаға жіберілді')}: <b>${esc(o.customer.email)}</b>. ${L('Если письма нет — проверьте папку «Спам».','Хат келмесе — «Спам» қалтасын тексеріңіз.')}</p>`:''}
     <div class="row mt2"><button class="btn" onclick="downloadPdf('${o.token}')">⬇ Скачать PDF</button><button class="btn ghost" onclick="copyLink('${o.token}')">Скопировать ссылку на билеты</button></div>
     <p class="small muted mt">Сохраните ссылку на эту страницу — по ней билеты всегда доступны.</p>
     <div class="grid mt">${o.tickets.map(t=>ticketHTML(t,o)).join('')}</div>`;
@@ -4049,6 +4051,7 @@ function vAdminLive(tab,id){
       ${r.reason?`<div class="small" style="color:#fca5a5">${r.reason.split(',').map(p=>problemText(p,null,true)).join('; ')}</div>`:''}
       ${live.img[r.id]?`<img src="${live.img[r.id].image}" alt="Чек" style="max-width:340px;width:100%;border-radius:10px;border:1px solid var(--line);margin-top:10px;display:block"><details class="tiny muted mt"><summary>Что прочитала программа</summary><pre style="white-space:pre-wrap">${esc(live.img[r.id].ocr_text||'')}</pre></details>`:''}</div>`).join('')||'<p class="muted small">Чеков нет.</p>'}</div>
     <div class="card mt"><h3 class="mb">Действия</h3>
+     ${o.status==='PAID'?`<p class="small" data-notr>${o.mailAt?'Письмо с билетами отправлено '+fmtTs(o.mailAt)+' → '+esc(o.customer.email):o.mailErr?'<span style="color:#fca5a5">Письмо не отправилось: '+esc(o.mailErr)+'</span>':'Письмо с билетами не отправлялось'}</p>${o.customer.email?`<button class="btn" onclick="admAct('${o.id}','mail')">Отправить билеты на почту ещё раз</button>`:''}`:''}
      ${['PENDING_PAYMENT','EXPIRED'].includes(o.status)?`<p class="small muted">Подтверждайте только если деньги видны в Kaspi.</p><button class="btn pri" onclick="admAct('${o.id}','approve','Деньги по этому заказу видны в Kaspi? Билеты будут выданы.')">Подтвердить оплату и выдать билеты</button>`:''}
      ${o.status==='PENDING_PAYMENT'&&o.review?`<div class="row mt"><input id="rjNote" placeholder="Причина (её увидит клиент)" style="flex:1;min-width:200px"><button class="btn" onclick="admAct('${o.id}','rejectReview',null,'rjNote')">Отклонить чек</button></div>`:''}
      ${o.status!=='CANCELLED'?`<div class="row mt2"><input id="cnNote" placeholder="Причина отмены" style="flex:1;min-width:200px"><button class="btn" style="border-color:#7f1d1d;color:#fca5a5" onclick="admAct('${o.id}','cancel','Отменить заказ? Билеты перестанут работать, места вернутся в продажу.','cnNote')">Отменить заказ и билеты</button></div>`:''}

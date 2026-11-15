@@ -14,7 +14,7 @@ let pass = 0, fail = 0;
 const ok = (name, cond, extra = '') => { cond ? pass++ : fail++; console.log((cond ? 'PASS ' : 'FAIL ') + name + (extra ? '  → ' + extra : '')); };
 const code = async (f) => { try { await f(); return 'OK'; } catch (e) { return e.code || String(e.message); } };
 const T0 = Date.UTC(2026, 10, 15, 15, 10);                    // 20:10 Astana
-const base = (o = {}) => ({ idem: 'idem-' + Math.random().toString(36).slice(2) + 'xxxx', scrId: 'scr1', seatIds: ['h1r2s5'], name: 'Тест Тестов', phone: '8 701 123 45 67', offer: true, pd: true, ...o });
+const base = (o = {}) => ({ idem: 'idem-' + Math.random().toString(36).slice(2) + 'xxxx', scrId: 'scr1', seatIds: ['h1r2s5'], name: 'Тест Тестов', phone: '8 701 123 45 67', email: 'buyer@example.com', offer: true, pd: true, ...o });
 // fake receipt reader for rule tests (the real one is tested separately below)
 const fake = (r) => async () => ({ number: '111111111111111111', amount: 2000, paidAt: T0 + 60000, paidAtText: 'x', recipientOk: true, sender: 'A', success: true, failedWord: false, text: '', ...r });
 const IMG = 'data:image/jpeg;base64,AAAA';
@@ -99,7 +99,7 @@ ok('10 scanners at once: exactly 1 accepts', par.filter((x) => x.res === 'ACCEPT
 // tickets already scanned at the entrance, then the order is cancelled → seats still return
 {
   const t = late + 500000;
-  const U1 = await core.createOrder({ idem: 'used-then-cancel', scrId: 'scr3', seatIds: ['h3r2s1', 'h3r2s2'], name: 'Скан Отмена', phone: '87017770001', offer: true, pd: true }, t, '9.9.9.9');
+  const U1 = await core.createOrder({ idem: 'used-then-cancel', scrId: 'scr3', seatIds: ['h3r2s1', 'h3r2s2'], name: 'Скан Отмена', phone: '87017770001', email: 'buyer@example.com', offer: true, pd: true }, t, '9.9.9.9');
   const pd = await core.adminAction({ orderId: U1.id, action: 'approve' }, 'admin', t + 1000);
   const sc = await core.validateTicket({ qr: 'BZ1.' + pd.tickets[0].token }, 'staff', t + 2000);
   const cn = await core.adminAction({ orderId: U1.id, action: 'cancel' }, 'admin', t + 3000);
@@ -115,6 +115,28 @@ ok('10 scanners at once: exactly 1 accepts', par.filter((x) => x.res === 'ACCEPT
   ok('wrapped number: joined, tail is not an amount', a.number === '909893876336095864' && a.amount === null, JSON.stringify([a.number, a.amount]));
   const b = parseReceipt('Перевод успешно совершен\n2 000 т\n\nӨркен М.\n\n№ квитанции 9098983016748923\n56\n\nДата и время 16.11.2026 01:11\n');
   ok('wrapped number with amount above', b.number === '909898301674892356' && b.amount === 2000, JSON.stringify([b.number, b.amount]));
+}
+// tickets by email
+{
+  const { useMailer } = await import('../netlify/functions/lib/mail.mjs');
+  const t = late + 900000, box = [];
+  let noMail = null; try { await core.createOrder({ idem: 'no-mail-order', scrId: 'scr3', seatIds: ['h3r4s1'], name: 'Без Почты', phone: '87017770009', offer: true, pd: true }, t, '9.9.9.8'); } catch (e) { noMail = e.code; }
+  ok('order without email is refused', noMail === 'VALIDATION_ERROR', noMail);
+  const M = await core.createOrder({ idem: 'mail-order-1', scrId: 'scr3', seatIds: ['h3r4s1', 'h3r4s2'], name: 'Почта <Тест>', phone: '87017770002', email: 'guest@example.com', offer: true, pd: true }, t, '9.9.9.7');
+  ok('no letter when mail is not set up', (await core.mailTickets(M.id, t, 'https://x.test')) === 'OFF');
+  useMailer(async (l) => { box.push(l); });
+  ok('no letter for an unpaid order', (await core.mailTickets(M.id, t, 'https://x.test')) === 'SKIP' && box.length === 0);
+  const paid = await core.adminAction({ orderId: M.id, action: 'approve' }, 'admin', t + 1000);
+  const r1 = await Promise.all([core.mailTickets(M.id, t + 2000, 'https://x.test'), core.mailTickets(M.id, t + 2000, 'https://x.test')]);
+  const l = box[0] || {};
+  ok('paid order: exactly one letter', r1.sort().join() === 'ALREADY,SENT' && box.length === 1, r1.join());
+  ok('letter has link, seats and ticket numbers', l.to === 'guest@example.com' && l.text.includes('https://x.test/#/order/' + M.token) && paid.tickets.every((k) => l.text.includes(k.number) && l.html.includes(k.number)) && l.html.includes('&lt;Тест&gt;') && !l.html.includes('<Тест>'));
+  ok('order shows when the letter went', !!(await core.getOrdersByTokens([M.token], t + 3000))[0].mailAt);
+  ok('admin can send again', (await core.mailTickets(M.id, t + 4000, 'https://x.test', true)) === 'SENT' && box.length === 2);
+  useMailer(async () => { throw new Error('mailbox full'); });
+  const f = await core.mailTickets(M.id, t + 5000, 'https://x.test', true), o2 = (await core.getOrdersByTokens([M.token], t + 6000))[0];
+  ok('failed letter: order stays paid, error is kept', f === 'FAILED' && o2.status === 'PAID' && o2.mailErr === 'mailbox full' && !o2.mailAt, JSON.stringify([f, o2.status, o2.mailErr]));
+  useMailer(null);
 }
 // fake receipt found later → admin cancels, ticket stops working, seat returns
 const E = await core.createOrder(base({ seatIds: ['h1r7s1'], phone: '87010000012' }), late, '12');

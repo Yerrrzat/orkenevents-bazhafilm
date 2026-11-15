@@ -29,6 +29,8 @@ list in the admin panel with Kaspi history and cancels orders with fake receipts
 |---|---|
 | `DATABASE_URL` | Neon Postgres connection string. Without it the site only shows halls (sales closed). |
 | `ADMIN_KEY` | Long secret (16+ characters) for the admin panel. |
+| `GMAIL_USER` | Gmail address the tickets are emailed from. Optional: without it the site works, letters are just not sent. |
+| `GMAIL_APP_PASSWORD` | 16-letter Google "app password" for that mailbox (not the normal password). |
 | `STAFF_KEY` | Secret for entrance staff (ticket scanning only). |
 
 Tables are created automatically on the first request. Sales are opened in the admin panel.

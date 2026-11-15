@@ -46,6 +46,8 @@ export const SCHEMA = [
      number text UNIQUE NOT NULL, token text UNIQUE NOT NULL, status text NOT NULL,
      checked_at double precision, checked_by text, created double precision NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS audit(id bigserial PRIMARY KEY, at double precision NOT NULL, actor text, action text NOT NULL, entity text, detail text)`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS mail_at double precision`,
+  `ALTER TABLE orders ADD COLUMN IF NOT EXISTS mail_err text`,
 ];
 let migrated = null;
 export function migrate() { if (!migrated) migrated = (async () => { for (const s of SCHEMA) await q(s); })().catch((e) => { migrated = null; throw e; }); return migrated; }

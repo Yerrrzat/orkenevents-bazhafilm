@@ -1,5 +1,6 @@
 // HTTP API for the site: /api/*
 // Needs environment variables in Netlify: DATABASE_URL (Neon), ADMIN_KEY, STAFF_KEY.
+import { mailConfigured } from './lib/mail.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,9 +38,12 @@ async function ocrSelfTest() {
 export default async function handler(req, context) {
   const url = new URL(req.url), route = url.pathname.replace(/^\/api\/?/, '').replace(/\/$/, ''), now = Date.now();
   const ip = (context && context.ip) || req.headers.get('x-nf-client-connection-ip') || '';
+  const site = (process.env.URL || url.origin).replace(/\/$/, '');
+  // work that may finish after the answer is sent (the letter with tickets)
+  const later = (p) => { if (context && typeof context.waitUntil === 'function') context.waitUntil(p); else return p; };
   try {
     if (route === 'health') {
-      const out = { ok: true, time: new Date(now).toISOString(), db: dbConfigured() ? 'configured' : 'not configured', adminKey: !!process.env.ADMIN_KEY };
+      const out = { ok: true, time: new Date(now).toISOString(), db: dbConfigured() ? 'configured' : 'not configured', adminKey: !!process.env.ADMIN_KEY, mail: mailConfigured() ? 'configured' : 'not configured' };
       if (dbConfigured()) { try { await migrate(); await q('SELECT 1 AS x'); out.db = 'connected'; } catch (e) { out.db = 'error: ' + String(e.message).slice(0, 200); out.ok = false; } }
       if (url.searchParams.get('ocr')) out.ocr = await ocrSelfTest();
       return json(200, out);
@@ -56,12 +60,18 @@ export default async function handler(req, context) {
     if (req.method === 'GET' && route === 'orders') return json(200, { now, orders: await core.getOrdersByTokens((url.searchParams.get('tokens') || '').split(','), now) });
     if (req.method === 'POST' && route === 'orders') { await core.cleanup(now); return json(201, { order: await core.createOrder(body, now, ip) }); }
     if (req.method === 'POST' && route === 'orders/cancel') return json(200, { order: await core.cancelByCustomer(body.token, now) });
-    if (req.method === 'POST' && route === 'receipt') return json(200, await core.submitReceipt(body.token, body.image, now, undefined, body.manual === true));
+    if (req.method === 'POST' && route === 'receipt') { const r = await core.submitReceipt(body.token, body.image, now, undefined, body.manual === true); if (r.ok) await later(core.mailTickets(r.order.id, now, site)); return json(200, r); }
     if (req.method === 'POST' && route === 'receipt/review') return json(200, { order: await core.requestReview(body.token, now) });
 
     if (req.method === 'GET' && route === 'admin/overview') { need(req, 'admin'); return json(200, await core.adminOverview(now)); }
     if (req.method === 'GET' && route === 'admin/receipt') { need(req, 'admin'); return json(200, await core.receiptImage(url.searchParams.get('id'))); }
-    if (req.method === 'POST' && route === 'admin/order') { need(req, 'admin'); return json(200, { order: await core.adminAction(body, 'admin', now) }); }
+    if (req.method === 'POST' && route === 'admin/order') {
+      need(req, 'admin');
+      if (body.action === 'mail') { const res = await core.mailTickets(body.orderId, now, site, true); if (res !== 'SENT') throw new core.ApiError(409, 'MAIL_' + res, res === 'OFF' ? 'Почта не настроена' : res === 'SKIP' ? 'Заказ не оплачен или без email' : 'Письмо не отправилось'); return json(200, { ok: true }); }
+      const order = await core.adminAction(body, 'admin', now);
+      if (body.action === 'approve') await core.mailTickets(order.id, now, site);
+      return json(200, { order });
+    }
     if (req.method === 'POST' && route === 'admin/settings') { need(req, 'admin'); return json(200, { settings: await core.saveSettings(body, 'admin', now) }); }
     if (req.method === 'GET' && route === 'staff/me') return json(200, { role: need(req, 'staff') });
     if (req.method === 'POST' && route === 'staff/validate') { const r = need(req, 'staff'); return json(200, await core.validateTicket(body, r, now)); }

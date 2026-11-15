@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { q, tx } from './db.mjs';
 import { SCREENINGS } from './halls.mjs';
 import { readReceipt, checkReceipt } from './receipt.mjs';
+import { mailConfigured, sendMail, ticketLetter } from './mail.mjs';
 
 export const DEFAULTS = {
   salesOpen: false,                                  // master switch: false = site only shows halls
@@ -77,6 +78,7 @@ function shapeOrder(o, tickets, receipt, now) {
     id: o.id, number: o.number, token: o.token, scrId: o.scr_id, status, items: o.items, total: o.total, currency: 'KZT',
     holdExp: o.hold_exp, created: o.created, paidAt: o.paid_at, cancelReason: o.cancel_reason, review: o.review, attempts: o.attempts,
     customer: { name: o.name, phone: o.phone, email: o.email || '' },
+    mailAt: o.mail_at || null, mailErr: o.mail_err || null,
     lastReceipt: receipt ? { status: receipt.status, reason: receipt.reason, number: receipt.number, amount: receipt.amount, paidAt: receipt.paid_at, created: receipt.created } : null,
     tickets: tickets.map((t) => ({ id: t.id, orderId: t.order_id, itemId: t.item_id, number: t.number, token: t.token, status: t.status, checkedAt: t.checked_at })),
   };
@@ -119,7 +121,7 @@ export async function createOrder(inp, now, ip) {
   const phone = normPhone(inp.phone);
   if (!phone) throw new ApiError(400, 'VALIDATION_ERROR', 'Введите номер в формате +7 7XX XXX XX XX');
   const email = String(inp.email || '').trim().slice(0, 120);
-  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new ApiError(400, 'VALIDATION_ERROR', 'Проверьте email');
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) throw new ApiError(400, 'VALIDATION_ERROR', 'Укажите email — на него придут билеты');
   if (!inp.offer || !inp.pd) throw new ApiError(400, 'VALIDATION_ERROR', 'Нужно согласие с офертой и на обработку персональных данных');
   const busy = await q(`SELECT count(*)::int AS c FROM orders WHERE status='PENDING_PAYMENT' AND hold_exp>$1 AND (phone=$2 OR ip=$3)`, [now, phone, ip || '-']);
   if (busy[0].c >= 3) throw new ApiError(429, 'TOO_MANY_ORDERS', 'У вас уже есть неоплаченные заказы. Оплатите или отмените их.');
@@ -290,6 +292,29 @@ export async function adminAction(inp, actor, now) {
     return orderById(o.id, now);
   }
   throw new ApiError(400, 'VALIDATION_ERROR', 'Неизвестное действие');
+}
+
+/**
+ * Email the tickets of a paid order. Never throws: a failed letter must not undo a sale.
+ * Sent once per order unless `force` (the admin's "send again" button).
+ */
+export async function mailTickets(orderId, now, site, force = false) {
+  try {
+    if (!mailConfigured()) return 'OFF';
+    const o = await orderById(orderId, now);
+    if (o.status !== 'PAID' || !o.customer.email) return 'SKIP';
+    if (!force) { const got = await q(`UPDATE orders SET mail_at=$2 WHERE id=$1 AND mail_at IS NULL RETURNING id`, [o.id, now]); if (!got.length) return 'ALREADY'; } // claim first: two requests never send twice
+    const s = await getSettings();
+    try {
+      await sendMail(ticketLetter(o, { site, startsAt: s.startsAt, hall: SCREENINGS[o.scrId].hall, phone: s.kaspi }));
+      await q(`UPDATE orders SET mail_at=$2, mail_err=NULL WHERE id=$1`, [o.id, now]);
+      return 'SENT';
+    } catch (e) {
+      console.error('mail failed', o.number, e);
+      await q(`UPDATE orders SET mail_at=NULL, mail_err=$2 WHERE id=$1`, [o.id, String(e && e.message || e).slice(0, 200)]);
+      return 'FAILED';
+    }
+  } catch (e) { console.error('mail failed', e); return 'FAILED'; }
 }
 
 /** Entrance check. A ticket is accepted exactly once: the UPDATE only matches while it is still VALID. */
