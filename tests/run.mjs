@@ -96,6 +96,18 @@ ok('unknown code refused', (await core.validateTicket({ qr: 'BZ1.nope' }, 'staff
 const par = await Promise.all(Array.from({ length: 10 }, () => core.validateTicket({ qr: b2.tickets[0].number, scrId: 'scr1' }, 'staff', late)));
 ok('10 scanners at once: exactly 1 accepts', par.filter((x) => x.res === 'ACCEPTED').length === 1);
 
+// tickets already scanned at the entrance, then the order is cancelled → seats still return
+{
+  const t = late + 500000;
+  const U1 = await core.createOrder({ idem: 'used-then-cancel', scrId: 'scr3', seatIds: ['h3r2s1', 'h3r2s2'], name: 'Скан Отмена', phone: '87017770001', offer: true, pd: true }, t, '9.9.9.9');
+  const pd = await core.adminAction({ orderId: U1.id, action: 'approve' }, 'admin', t + 1000);
+  const sc = await core.validateTicket({ qr: 'BZ1.' + pd.tickets[0].token }, 'staff', t + 2000);
+  const cn = await core.adminAction({ orderId: U1.id, action: 'cancel' }, 'admin', t + 3000);
+  const st = (await core.publicState(t + 3000)).taken.scr3 || {};
+  ok('cancel after scan: both seats free, tickets dead', sc.res === 'ACCEPTED' && cn.status === 'CANCELLED' && cn.tickets.every((x) => x.status === 'CANCELLED') && !st.h3r2s1 && !st.h3r2s2, JSON.stringify([sc.res, cn.status, st]));
+  const again = await core.validateTicket({ qr: 'BZ1.' + pd.tickets[0].token }, 'staff', t + 4000);
+  ok('cancelled ticket is refused at the entrance', again.res !== 'ACCEPTED', again.res);
+}
 // fake receipt found later → admin cancels, ticket stops working, seat returns
 const E = await core.createOrder(base({ seatIds: ['h1r7s1'], phone: '87010000012' }), late, '12');
 const ePaid = (await core.submitReceipt(E.token, IMG, late + 1000, fake({ number: '444444444444444444', paidAt: late }))).order;

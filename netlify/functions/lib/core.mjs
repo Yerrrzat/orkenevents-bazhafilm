@@ -56,6 +56,9 @@ export async function audit(now, actor, action, entity, detail) {
 const cleanupStmts = (now) => [
   [`UPDATE orders SET status='EXPIRED' WHERE status='PENDING_PAYMENT' AND hold_exp<$1`, [now]],
   [`DELETE FROM seat_locks WHERE status='HELD' AND exp<$1`, [now]],
+  // a cancelled order never keeps seats (also repairs orders cancelled after their tickets were scanned)
+  [`DELETE FROM seat_locks WHERE order_id IN (SELECT id FROM orders WHERE status='CANCELLED')`, []],
+  [`UPDATE tickets SET status='CANCELLED' WHERE status<>'CANCELLED' AND order_id IN (SELECT id FROM orders WHERE status='CANCELLED')`, []],
 ];
 export async function cleanup(now) { await tx(cleanupStmts(now)); }
 
@@ -280,8 +283,8 @@ export async function adminAction(inp, actor, now) {
     const reason = String(inp.note || '').trim().slice(0, 200) || 'Отменён администратором';
     await tx([
       [`UPDATE orders SET status='CANCELLED', cancel_reason=$2, review=false WHERE id=$1`, [o.id, reason]],
-      [`UPDATE tickets SET status='CANCELLED' WHERE order_id=$1 AND status='VALID'`, [o.id]],
-      [`DELETE FROM seat_locks WHERE order_id=$1 AND NOT EXISTS(SELECT 1 FROM tickets WHERE order_id=$1 AND seat_id=seat_locks.seat_id AND status='USED')`, [o.id]],
+      [`UPDATE tickets SET status='CANCELLED' WHERE order_id=$1`, [o.id]],       // also tickets already scanned at the entrance
+      [`DELETE FROM seat_locks WHERE order_id=$1`, [o.id]],
     ]);
     await audit(now, actor, 'order.cancel', o.number, reason);
     return orderById(o.id, now);
