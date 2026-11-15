@@ -1,6 +1,12 @@
-# ORKEN EVENTS — Netlify settings. The site is static for now (ticket sales not open yet).
+# ORKEN EVENTS — Netlify settings
 [build]
-  publish = "."
+  publish = "public"          # only this folder is served to visitors
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  external_node_modules = ["tesseract.js"]            # text recognition for receipts (uses WebAssembly files)
+  included_files = ["netlify/functions/data/**"]      # language data + self-test picture
 
 [[headers]]
   for = "/*"

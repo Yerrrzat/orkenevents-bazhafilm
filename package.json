@@ -1,0 +1,19 @@
+{
+  "name": "orkenevents-bazhafilm",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ORKEN EVENTS — ticket site for the «Бажа» group screening",
+  "scripts": {
+    "test": "node tests/run.mjs"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "1.2.1",
+    "jpeg-js": "0.4.4",
+    "pngjs": "7.0.0",
+    "tesseract.js": "7.0.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.16"
+  }
+}
