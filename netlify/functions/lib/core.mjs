@@ -9,7 +9,7 @@ import { mailConfigured, sendMail, ticketLetter } from './mail.mjs';
 export const DEFAULTS = {
   salesOpen: false,                                  // master switch: false = site only shows halls
   hallsOpen: { scr1: true, scr2: true, scr3: true, scr4: false, scr5: false },
-  price: 2000, vipPrice: 2000, holdMin: 15, maxSeats: 10,   // vipPrice: a seat in the VIP hall
+  price: 2000, vipPrice: 5000, holdMin: 15, maxSeats: 10,   // vipPrice: a seat in the VIP hall
   startsAt: '2026-11-19T19:00',
   kaspi: '+7 775 912 0048',                          // number buyers transfer to
   recipient: 'Өркен М.', recipientPattern: 'ркен М', // how the receiver appears on a Kaspi receipt

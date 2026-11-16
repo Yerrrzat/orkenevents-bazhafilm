@@ -171,6 +171,7 @@ ok('10 scanners at once: exactly 1 accepts', par.filter((x) => x.res === 'ACCEPT
   const st0 = await core.publicState(t);
   let closed = null; try { await core.createOrder(base({ idem: 'vip-closed-order', scrId: 'scr5', seatIds: ['h5r1s1'], phone: '87019990001' }), t, '7.7.7.1'); } catch (e) { closed = e.code; }
   ok('VIP hall is closed by default', st0.hallsOpen.scr5 === false && closed === 'SALES_CLOSED', closed);
+  ok('VIP price is 5 000 ₸ unless the admin changes it', st0.vipPrice === 5000 && st0.price === 2000, st0.vipPrice);
   let bad = null; try { await core.saveSettings({ vipPrice: 5 }, 'admin', t); } catch (e) { bad = e.code; }
   await core.saveSettings({ vipPrice: 5000, hallsOpen: { ...st0.hallsOpen, scr5: true } }, 'admin', t);
   const st1 = await core.publicState(t);
@@ -183,7 +184,7 @@ ok('10 scanners at once: exactly 1 accepts', par.filter((x) => x.res === 'ACCEPT
   await core.adminAction({ orderId: v.id, action: 'approve' }, 'admin', t + 1000); await core.mailTickets(v.id, t + 2000, 'https://x.test');
   ok('letter names the VIP hall', box.length === 1 && box[0].text.includes('Астана — VIP-зал') && !/зал VIP|VIP-зал-зал/.test(box[0].text));
   useMailer(null);
-  await core.saveSettings({ vipPrice: 2000, hallsOpen: st0.hallsOpen }, 'admin', t + 3000);
+  await core.saveSettings({ hallsOpen: st0.hallsOpen }, 'admin', t + 3000);
 }
 // fake receipt found later → admin cancels, ticket stops working, seat returns
 const E = await core.createOrder(base({ seatIds: ['h1r7s1'], phone: '87010000012' }), late, '12');
