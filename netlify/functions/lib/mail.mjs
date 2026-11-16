@@ -27,18 +27,19 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 export function ticketLetter(o, info) {
   const link = `${info.site}/#/order/${o.token}`;
   const [d, t] = info.startsAt.split('T'), date = d.split('-').reverse().join('.');
+  const hallKk = info.hall === 'VIP' ? 'VIP-зал' : `${info.hall}-зал`, hallRu = info.hall === 'VIP' ? 'VIP-зал' : `зал ${info.hall}`;
   const seats = o.items.map((i) => {
     const tk = o.tickets.find((x) => x.itemId === i.id);
     return { r: i.r, n: i.n, num: tk ? tk.number : '' };
   });
   const text = [
     `Сәлеметсіз бе, ${o.customer.name}!`, '',
-    `«Бажа» фильміне билеттеріңіз дайын.`, `Күні: ${date}, ${t}`, `Орны: Arman Asia Park, Астана — ${info.hall}-зал`, '',
+    `«Бажа» фильміне билеттеріңіз дайын.`, `Күні: ${date}, ${t}`, `Орны: Arman Asia Park, Астана — ${hallKk}`, '',
     ...seats.map((s) => `${s.r}-қатар, ${s.n}-орын — билет № ${s.num}`), '',
     `Билеттерді ашу (QR-код және PDF): ${link}`, `Кіреберісте QR-кодты телефоннан көрсетіңіз.`, '',
     '— — —', '',
     `Здравствуйте, ${o.customer.name}!`, '',
-    `Ваши билеты на фильм «Бажа» готовы.`, `Дата: ${date}, ${t}`, `Место: Arman Asia Park, Астана — зал ${info.hall}`, '',
+    `Ваши билеты на фильм «Бажа» готовы.`, `Дата: ${date}, ${t}`, `Место: Arman Asia Park, Астана — ${hallRu}`, '',
     ...seats.map((s) => `Ряд ${s.r}, место ${s.n} — билет № ${s.num}`), '',
     `Открыть билеты (QR-код и PDF): ${link}`, `На входе покажите QR-код с телефона.`, '',
     `Тапсырыс / Заказ: ${o.number}`, `ORKEN EVENTS · ${info.phone}`,
@@ -47,12 +48,12 @@ export function ticketLetter(o, info) {
   const btn = (label) => `<p style="margin:18px 0"><a href="${esc(link)}" style="background:#d4a017;color:#111;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px;display:inline-block">${label}</a></p>`;
   const html = `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#111;max-width:520px">
 <p>Сәлеметсіз бе, ${esc(o.customer.name)}!</p>
-<p><b>«Бажа» фильміне билеттеріңіз дайын.</b><br>Күні: ${date}, ${t}<br>Орны: Arman Asia Park, Астана — ${info.hall}-зал</p>
+<p><b>«Бажа» фильміне билеттеріңіз дайын.</b><br>Күні: ${date}, ${t}<br>Орны: Arman Asia Park, Астана — ${hallKk}</p>
 <table style="border-collapse:collapse">${rows(true)}</table>${btn('Билеттерді ашу')}
 <p style="color:#555">Кіреберісте QR-кодты телефоннан көрсетіңіз.</p>
 <hr style="border:none;border-top:1px solid #ddd;margin:22px 0">
 <p>Здравствуйте, ${esc(o.customer.name)}!</p>
-<p><b>Ваши билеты на фильм «Бажа» готовы.</b><br>Дата: ${date}, ${t}<br>Место: Arman Asia Park, Астана — зал ${info.hall}</p>
+<p><b>Ваши билеты на фильм «Бажа» готовы.</b><br>Дата: ${date}, ${t}<br>Место: Arman Asia Park, Астана — ${hallRu}</p>
 <table style="border-collapse:collapse">${rows(false)}</table>${btn('Открыть билеты')}
 <p style="color:#555">На входе покажите QR-код с телефона.</p>
 <p style="color:#888;font-size:13px">Тапсырыс / Заказ: ${esc(o.number)}<br>ORKEN EVENTS · ${esc(info.phone)}</p></div>`;

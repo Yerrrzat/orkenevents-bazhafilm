@@ -8,8 +8,8 @@ import { mailConfigured, sendMail, ticketLetter } from './mail.mjs';
 
 export const DEFAULTS = {
   salesOpen: false,                                  // master switch: false = site only shows halls
-  hallsOpen: { scr1: true, scr2: true, scr3: true, scr4: false },
-  price: 2000, holdMin: 15, maxSeats: 10,
+  hallsOpen: { scr1: true, scr2: true, scr3: true, scr4: false, scr5: false },
+  price: 2000, vipPrice: 2000, holdMin: 15, maxSeats: 10,   // vipPrice: a seat in the VIP hall
   startsAt: '2026-11-19T19:00',
   kaspi: '+7 775 912 0048',                          // number buyers transfer to
   recipient: 'Өркен М.', recipientPattern: 'ркен М', // how the receiver appears on a Kaspi receipt
@@ -41,8 +41,9 @@ export async function getSettings() {
 export async function saveSettings(patch, actor, now) {
   const cur = await getSettings(), next = { ...cur };
   for (const k of SETTING_KEYS) if (patch[k] !== undefined) next[k] = patch[k];
-  next.price = Math.round(Number(next.price)); next.holdMin = Math.round(Number(next.holdMin)); next.maxSeats = Math.round(Number(next.maxSeats));
+  next.price = Math.round(Number(next.price)); next.vipPrice = Math.round(Number(next.vipPrice)); next.holdMin = Math.round(Number(next.holdMin)); next.maxSeats = Math.round(Number(next.maxSeats));
   if (!(next.price >= 100 && next.price <= 100000)) throw new ApiError(400, 'VALIDATION_ERROR', 'Цена: от 100 до 100 000 ₸');
+  if (!(next.vipPrice >= 100 && next.vipPrice <= 100000)) throw new ApiError(400, 'VALIDATION_ERROR', 'Цена VIP: от 100 до 100 000 ₸');
   if (!(next.holdMin >= 5 && next.holdMin <= 120)) throw new ApiError(400, 'VALIDATION_ERROR', 'Время брони: от 5 до 120 минут');
   if (!(next.maxSeats >= 1 && next.maxSeats <= 20)) throw new ApiError(400, 'VALIDATION_ERROR', 'Мест в заказе: от 1 до 20');
   next.salesOpen = !!next.salesOpen;
@@ -69,7 +70,7 @@ export async function publicState(now) {
   const rows = await q(`SELECT scr_id, seat_id, status FROM seat_locks WHERE status='SOLD' OR exp>$1`, [now]);
   const taken = {};
   for (const r of rows) (taken[r.scr_id] ||= {})[r.seat_id] = r.status === 'SOLD' ? 'S' : 'H';
-  return { configured: true, now, salesOpen: s.salesOpen, hallsOpen: s.hallsOpen, price: s.price, holdMin: s.holdMin, maxSeats: s.maxSeats, startsAt: s.startsAt, kaspi: s.kaspi, recipient: s.recipient, taken };
+  return { configured: true, now, salesOpen: s.salesOpen, hallsOpen: s.hallsOpen, price: s.price, vipPrice: s.vipPrice, holdMin: s.holdMin, maxSeats: s.maxSeats, startsAt: s.startsAt, kaspi: s.kaspi, recipient: s.recipient, taken };
 }
 
 function shapeOrder(o, tickets, receipt, now) {
@@ -128,8 +129,9 @@ export async function createOrder(inp, now, ip) {
   if (busy[0].c >= 3 || busy[0].i >= 20) throw new ApiError(429, 'TOO_MANY_ORDERS', 'У вас уже есть неоплаченные заказы. Оплатите или отмените их.');
 
   const id = uid('ord'), token = rnd(24), number = 'BZ-' + s.startsAt.slice(2, 10).replace(/-/g, '') + '-' + code(4);
-  const items = seatIds.map((sid) => ({ id: uid('itm'), seatId: sid, r: scr.seats.get(sid).r, n: scr.seats.get(sid).n, cat: 'STANDARD', price: s.price, status: 'ACTIVE' }));
-  const total = items.length * s.price, holdExp = now + s.holdMin * 60000;
+  const price = scr.vip ? s.vipPrice : s.price;
+  const items = seatIds.map((sid) => ({ id: uid('itm'), seatId: sid, r: scr.seats.get(sid).r, n: scr.seats.get(sid).n, cat: scr.vip ? 'VIP' : 'STANDARD', price, status: 'ACTIVE' }));
+  const total = items.length * price, holdExp = now + s.holdMin * 60000;
   try {
     await tx([
       [`DELETE FROM seat_locks WHERE scr_id=$1 AND status='HELD' AND exp<$2 AND seat_id IN (SELECT jsonb_array_elements_text($3::jsonb))`, [inp.scrId, now, J(seatIds)]],

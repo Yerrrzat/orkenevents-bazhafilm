@@ -1,3 +1,4 @@
+import { SCREENINGS as SCR } from '../netlify/functions/lib/halls.mjs';
 // Local tests: real Postgres engine in memory (PGlite) + the real receipt reader.
 // Run: npm test            (optional: RECEIPT=/path/to/real-receipt.jpg npm test)
 import fs from 'node:fs';
@@ -163,6 +164,26 @@ ok('10 scanners at once: exactly 1 accepts', par.filter((x) => x.res === 'ACCEPT
   for (let k = 0; k < 25; k++) await R.readReceipt(pic);
   const grew = Math.round((process.memoryUsage().rss - before) / 1048576);
   ok('25 receipts in a row: memory stays flat', grew < 120, grew + ' MB');
+}
+// VIP hall: closed until the admin opens it, has its own price
+{
+  const t = late + 2500000;
+  const st0 = await core.publicState(t);
+  let closed = null; try { await core.createOrder(base({ idem: 'vip-closed-order', scrId: 'scr5', seatIds: ['h5r1s1'], phone: '87019990001' }), t, '7.7.7.1'); } catch (e) { closed = e.code; }
+  ok('VIP hall is closed by default', st0.hallsOpen.scr5 === false && closed === 'SALES_CLOSED', closed);
+  let bad = null; try { await core.saveSettings({ vipPrice: 5 }, 'admin', t); } catch (e) { bad = e.code; }
+  await core.saveSettings({ vipPrice: 5000, hallsOpen: { ...st0.hallsOpen, scr5: true } }, 'admin', t);
+  const st1 = await core.publicState(t);
+  const v = await core.createOrder(base({ idem: 'vip-open-order-1', scrId: 'scr5', seatIds: ['h5r1s6', 'h5r3s1'], phone: '87019990002' }), t, '7.7.7.2');
+  const n = await core.createOrder(base({ idem: 'vip-open-order-2', scrId: 'scr3', seatIds: ['h3r6s1'], phone: '87019990003' }), t, '7.7.7.3');
+  ok('VIP price applies only in the VIP hall', bad === 'VALIDATION_ERROR' && st1.vipPrice === 5000 && v.total === 10000 && v.items.every((x) => x.price === 5000 && x.cat === 'VIP') && n.total === st1.price, JSON.stringify([bad, v.total, n.total]));
+  let none = null; try { await core.createOrder(base({ idem: 'vip-open-order-3', scrId: 'scr5', seatIds: ['h5r1s7'], phone: '87019990004' }), t, '7.7.7.4'); } catch (e) { none = e.code; }
+  ok('VIP hall has 18 seats, no seat 7', SCR.scr5.seats.size === 18 && !!none, none);
+  const { useMailer } = await import('../netlify/functions/lib/mail.mjs'); const box = []; useMailer(async (l) => box.push(l));
+  await core.adminAction({ orderId: v.id, action: 'approve' }, 'admin', t + 1000); await core.mailTickets(v.id, t + 2000, 'https://x.test');
+  ok('letter names the VIP hall', box.length === 1 && box[0].text.includes('Астана — VIP-зал') && !/зал VIP|VIP-зал-зал/.test(box[0].text));
+  useMailer(null);
+  await core.saveSettings({ vipPrice: 2000, hallsOpen: st0.hallsOpen }, 'admin', t + 3000);
 }
 // fake receipt found later → admin cancels, ticket stops working, seat returns
 const E = await core.createOrder(base({ seatIds: ['h1r7s1'], phone: '87010000012' }), late, '12');
