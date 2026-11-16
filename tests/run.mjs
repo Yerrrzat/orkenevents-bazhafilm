@@ -155,6 +155,15 @@ ok('10 scanners at once: exactly 1 accepts', par.filter((x) => x.res === 'ACCEPT
   let again = null; try { await core.rereadReview(a.id, t + 7300000, good('909000000000000009')); } catch (e) { again = e.code; }
   ok('read again on a paid order is refused', again === 'CONFLICT', again);
 }
+// the reader must not keep memory after each receipt (a busy server once ran out after a few dozen)
+{
+  const R = await import('../netlify/functions/lib/receipt.mjs'), fsm = await import('node:fs');
+  const pic = fsm.readFileSync(new URL('../netlify/functions/data/selftest.jpg', import.meta.url));
+  await R.readReceipt(pic); const before = process.memoryUsage().rss;
+  for (let k = 0; k < 25; k++) await R.readReceipt(pic);
+  const grew = Math.round((process.memoryUsage().rss - before) / 1048576);
+  ok('25 receipts in a row: memory stays flat', grew < 120, grew + ' MB');
+}
 // fake receipt found later → admin cancels, ticket stops working, seat returns
 const E = await core.createOrder(base({ seatIds: ['h1r7s1'], phone: '87010000012' }), late, '12');
 const ePaid = (await core.submitReceipt(E.token, IMG, late + 1000, fake({ number: '444444444444444444', paidAt: late }))).order;

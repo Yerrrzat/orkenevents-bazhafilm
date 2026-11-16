@@ -41,8 +41,8 @@ async function recognize(png) {
   const { M, api } = await getEngine();
   M.FS.writeFile('/input', png);
   if (api.SetImageFile(1, 0) === 1) throw new Error('OCR engine could not read the image');
-  api.Recognize(null);
-  return api.GetUTF8Text() || '';
+  try { api.Recognize(null); return api.GetUTF8Text() || ''; }
+  finally { try { api.Clear(); } catch (e) {} try { M.FS.unlink('/input'); } catch (e) {} }   // without this every receipt leaves ~25 MB behind
 }
 
 /** dataURL or Buffer (JPEG/PNG) -> { w, h, gray: Uint8Array } */
@@ -70,14 +70,26 @@ export function toBinaryPng({ w, h, gray }, region = { x: 0, y: 0, w, h }, scale
   let min = 255, max = 0, sum = 0;
   for (let y = region.y; y < region.y + region.h; y++) for (let x = region.x; x < region.x + region.w; x++) { const v = gray[y * w + x]; if (v < min) min = v; if (v > max) max = v; sum += v; }
   const mean = sum / (region.w * region.h), invert = mean < 110, span = Math.max(1, max - min);
-  const W = Math.round(region.w * scale), H = Math.round(region.h * scale), png = new PNG({ width: W, height: H });
+  // one grey byte per pixel, each row starts with a zero "filter" byte — the raw form a PNG file wraps
+  const W = Math.round(region.w * scale), H = Math.round(region.h * scale), raw = Buffer.alloc((W + 1) * H);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     let v = gray[(region.y + Math.min(region.h - 1, Math.floor(y / scale))) * w + region.x + Math.min(region.w - 1, Math.floor(x / scale))];
     v = ((v - min) * 255) / span; if (invert) v = 255 - v;
-    const o = v > 150 ? 255 : 0, k = (y * W + x) * 4;
-    png.data[k] = png.data[k + 1] = png.data[k + 2] = o; png.data[k + 3] = 255;
+    raw[y * (W + 1) + 1 + x] = v > 150 ? 255 : 0;
   }
-  return PNG.sync.write(png);
+  return grayPng(W, H, raw);
+}
+
+// Own tiny PNG writer: the pngjs one keeps ~8 MB after every call, and a busy server ran out of memory after a few dozen receipts.
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function chunk(type, data) {
+  const out = Buffer.alloc(12 + data.length); out.writeUInt32BE(data.length, 0); out.write(type, 4, 'latin1'); data.copy(out, 8);
+  let c = 0xffffffff; for (let i = 4; i < 8 + data.length; i++) c = CRC[(c ^ out[i]) & 255] ^ (c >>> 8);
+  out.writeUInt32BE((c ^ 0xffffffff) >>> 0, 8 + data.length); return out;
+}
+function grayPng(W, H, raw) {
+  const head = Buffer.alloc(13); head.writeUInt32BE(W, 0); head.writeUInt32BE(H, 4); head[8] = 8; head[9] = 0;   // 8 bits, greyscale
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', head), chunk('IDAT', zlib.deflateSync(raw, { level: 1 })), chunk('IEND', Buffer.alloc(0))]);
 }
 
 const digits = (s) => s.replace(/[^\d]/g, '');
