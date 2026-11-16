@@ -1,7 +1,6 @@
 // Sends tickets by email through a Gmail mailbox (free: up to 500 letters a day).
 // Needs two settings in Netlify: GMAIL_USER (the address) and GMAIL_APP_PASSWORD (an "app password", not the normal one).
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
+import nodemailer from 'nodemailer';   // a plain import, so the packager always ships it
 
 let custom = null;
 /** tests replace the real sender */
@@ -11,7 +10,6 @@ export const mailConfigured = () => !!custom || !!(process.env.GMAIL_USER && pro
 let transport = null;
 function getTransport() {
   if (!transport) {
-    const nodemailer = require('nodemailer');
     const port = Number(process.env.SMTP_PORT || 465);
     transport = nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'smtp.gmail.com', port, secure: port === 465,

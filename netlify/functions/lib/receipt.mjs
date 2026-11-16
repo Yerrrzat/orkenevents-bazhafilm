@@ -23,11 +23,16 @@ let enginePromise = null;
 function getEngine() {
   if (!enginePromise) enginePromise = (async () => {
     const t0 = Date.now(), require = createRequire(import.meta.url);
-    let factory, variant = 'simd';
-    try { factory = require('tesseract.js-core/tesseract-core-simd-lstm.wasm.js'); }
-    catch (e) { variant = 'plain'; factory = require('tesseract.js-core/tesseract-core-lstm.wasm.js'); }
-    let M;
-    try { M = await factory({}); } catch (e) { variant = 'plain'; M = await require('tesseract.js-core/tesseract-core-lstm.wasm.js')({}); }
+    // The engine files are kept next to the language data (copies of tesseract.js-core, Apache-2.0), so they are always
+    // shipped with the function; the installed package is only a fallback. Once the package was missing on the server
+    // and every receipt went to manual review.
+    const sources = [
+      ['simd', () => require(path.join(DATA_DIR, 'ocr-simd.cjs'))], ['plain', () => require(path.join(DATA_DIR, 'ocr-plain.cjs'))],
+      ['simd', () => require('tesseract.js-core/tesseract-core-simd-lstm.wasm.js')], ['plain', () => require('tesseract.js-core/tesseract-core-lstm.wasm.js')],
+    ];
+    let M = null, variant = null; const errors = [];
+    for (const [name, load] of sources) { try { M = await load()({}); variant = name; break; } catch (e) { errors.push(name + ': ' + String(e && e.message || e).split('\n')[0]); } }
+    if (!M) throw new Error('OCR engine not found — ' + errors.join(' | '));
     M.FS.writeFile('rus.traineddata', zlib.gunzipSync(fs.readFileSync(path.join(DATA_DIR, 'rus.traineddata.gz'))));
     const api = new M.TessBaseAPI();
     if (api.Init(null, 'rus', 1) === -1) throw new Error('OCR engine failed to start');   // 1 = LSTM only
