@@ -138,6 +138,23 @@ ok('10 scanners at once: exactly 1 accepts', par.filter((x) => x.res === 'ACCEPT
   ok('failed letter: order stays paid, error is kept', f === 'FAILED' && o2.status === 'PAID' && o2.mailErr === 'mailbox full' && !o2.mailAt, JSON.stringify([f, o2.status, o2.mailErr]));
   useMailer(null);
 }
+// reader was down at upload → receipt waits for a human → admin runs the reader again
+{
+  const t = late + 1500000, img = 'data:image/jpeg;base64,AAAA';
+  const mk = async (n, seat) => { const o = await core.createOrder(base({ idem: 'reread-order-' + n, scrId: 'scr3', seatIds: [seat], phone: '8701888000' + n }), t, '8.8.8.' + n); const r = await core.submitReceipt(o.token, img, t + 1000, async () => { throw new Error('engine down'); }); return [o, r]; };
+  const good = (num, amount = 2000) => async () => ({ success: true, number: num, amount, recipientOk: true, paidAt: t + 500, paidAtText: 'x', sender: 'Тест Т.', text: 'txt' });
+  const [a, ra] = await mk(1, 'h3r5s1'), [b] = await mk(2, 'h3r5s2'), [c] = await mk(3, 'h3r5s3');
+  ok('reader down → receipt waits for a human', ra.review === true && ra.order.review === true);
+  const r1 = await core.rereadReview(a.id, t + 7200000, good('909000000000000001'));
+  ok('read again: correct receipt → paid, ticket issued', r1.ok && r1.order.status === 'PAID' && r1.order.tickets.length === 1, JSON.stringify([r1.ok, r1.problems]));
+  const r2 = await core.rereadReview(b.id, t + 7200000, good('909000000000000001'));
+  ok('read again: number already used → stays in review', !r2.ok && r2.problems.join() === 'DUPLICATE' && r2.order.status === 'PENDING_PAYMENT' && r2.order.review, JSON.stringify(r2.problems));
+  const r3 = await core.rereadReview(c.id, t + 7200000, good('909000000000000003', 864));
+  const ov = await core.adminOverview(t + 7200000), rc3 = ov.receipts.find((x) => x.order_id === c.id);
+  ok('read again: wrong amount → stays in review, admin sees what was read', !r3.ok && r3.problems.join() === 'WRONG_AMOUNT' && rc3.status === 'REVIEW' && rc3.amount === 864 && rc3.number === '909000000000000003', JSON.stringify([r3.problems, rc3.status, rc3.amount]));
+  let again = null; try { await core.rereadReview(a.id, t + 7300000, good('909000000000000009')); } catch (e) { again = e.code; }
+  ok('read again on a paid order is refused', again === 'CONFLICT', again);
+}
 // fake receipt found later → admin cancels, ticket stops working, seat returns
 const E = await core.createOrder(base({ seatIds: ['h1r7s1'], phone: '87010000012' }), late, '12');
 const ePaid = (await core.submitReceipt(E.token, IMG, late + 1000, fake({ number: '444444444444444444', paidAt: late }))).order;

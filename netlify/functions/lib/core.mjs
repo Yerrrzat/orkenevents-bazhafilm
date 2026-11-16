@@ -212,6 +212,31 @@ export async function submitReceipt(token, image, now, read = readReceipt, manua
   return { ok: false, problems, read: { number: r.number, amount: r.amount, paidAtText: r.paidAtText, recipientOk: r.recipientOk }, expected: { total: o.total, recipient: s.recipient }, order: await orderByToken(token, now) };
 }
 
+/**
+ * Admin: run the reader again over a receipt that waits for a human (for example the reader was down when it was uploaded).
+ * A correct receipt is accepted and tickets are issued; otherwise what was read is saved next to the picture.
+ */
+export async function rereadReview(orderId, now, read = readReceipt) {
+  await cleanup(now);
+  const o = await orderById(orderId, now);
+  if (o.status !== 'PENDING_PAYMENT' || !o.review) throw new ApiError(409, 'CONFLICT', 'У этого заказа нет чека на проверке');
+  const rc = (await q(`SELECT id,image FROM receipts WHERE order_id=$1 AND status='REVIEW' AND image IS NOT NULL ORDER BY created DESC LIMIT 1`, [o.id]))[0];
+  if (!rc) throw new ApiError(409, 'CONFLICT', 'Картинка чека не сохранена');
+  const s = await getSettings();
+  let r; try { r = await read(rc.image, s.recipientPattern); } catch (e) { console.error('receipt reader failed', e); throw new ApiError(503, 'OCR_FAILED', 'Программа не смогла прочитать чек'); }
+  // the buyer may have waited for hours: compare the receipt time with the upload time, not with "now"
+  let problems = checkReceipt(r, o, now).filter((p) => p !== 'IN_FUTURE');
+  try {
+    await q(`UPDATE receipts SET number=$2, amount=$3, paid_at=$4, sender=$5, ocr_text=$6, reason=$7 WHERE id=$1`, [rc.id, r.number, r.amount, r.paidAt, r.sender, r.text || '', problems.join(',') || 'MANUAL']);
+  } catch (e) {
+    if (!isUnique(e)) throw e;
+    problems = ['DUPLICATE'];
+    await q(`UPDATE receipts SET amount=$2, paid_at=$3, sender=$4, ocr_text=$5, reason='DUPLICATE' WHERE id=$1`, [rc.id, r.amount, r.paidAt, r.sender, r.text || '']);
+  }
+  if (problems.length) return { ok: false, problems, order: await orderById(o.id, now) };
+  return { ok: true, order: await adminAction({ orderId: o.id, action: 'approve', note: 'auto: receipt read again' }, 'reader', now) };
+}
+
 /** Buyer asks a human to look at the last rejected receipt. Seats stay held for 24 hours. */
 export async function requestReview(token, now) {
   await cleanup(now);

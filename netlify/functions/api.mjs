@@ -68,6 +68,7 @@ export default async function handler(req, context) {
     if (req.method === 'POST' && route === 'admin/order') {
       need(req, 'admin');
       if (body.action === 'mail') { const res = await core.mailTickets(body.orderId, now, site, true); if (res !== 'SENT') throw new core.ApiError(409, 'MAIL_' + res, res === 'OFF' ? 'Почта не настроена' : res === 'SKIP' ? 'Заказ не оплачен или без email' : 'Письмо не отправилось'); return json(200, { ok: true }); }
+      if (body.action === 'reread') { const r = await core.rereadReview(body.orderId, now); if (r.ok) await core.mailTickets(r.order.id, now, site); return json(200, r); }
       const order = await core.adminAction(body, 'admin', now);
       if (body.action === 'approve') await core.mailTickets(order.id, now, site);
       return json(200, { order });

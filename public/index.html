@@ -2943,7 +2943,7 @@ const KK={
 'ЭКРАН':'ЭКРАН','Вход':'Кіру','Обычное':'Қарапайым','VIP':'VIP','Для людей с инвалидностью':'Мүгедектігі бар адамдарға',
 'Подсказка: на телефоне схему можно прокручивать пальцем и увеличивать кнопкой «+».':'Кеңес: телефонда сызбаны саусақпен жылжытып, «+» батырмасымен үлкейтуге болады.',
 'Места не выбраны':'Орын таңдалмаған','Далее':'Әрі қарай','Одно из выбранных мест только что заняли':'Таңдалған орындардың бірін жаңа ғана басқа біреу алды',
-'Изменить места':'Орындарды өзгерту','Контактные данные':'Байланыс деректері','Имя и фамилия *':'Аты-жөніңіз *','Email — пришлём билеты *':'Email — билеттерді жібереміз *','Укажите email — на него придут билеты':'Email көрсетіңіз — билеттер соған келеді','Телефон *':'Телефон *','Email — пришлём билеты (необязательно)':'Email — билеттерді жібереміз (міндетті емес)',
+'Изменить места':'Орындарды өзгерту','Контактные данные':'Байланыс деректері','Имя и фамилия *':'Аты-жөніңіз *','Прочитать чек программой ещё раз':'Чекті бағдарламамен қайта оқу','Правильные чеки будут приняты сами, билеты уйдут покупателям. Остальные останутся здесь.':'Дұрыс чектер өздігінен қабылданады, билеттер сатып алушыларға жіберіледі. Қалғандары осында қалады.','Email — пришлём билеты *':'Email — билеттерді жібереміз *','Укажите email — на него придут билеты':'Email көрсетіңіз — билеттер соған келеді','Телефон *':'Телефон *','Email — пришлём билеты (необязательно)':'Email — билеттерді жібереміз (міндетті емес)',
 'Забронировать места и проверить заказ':'Орындарды брондап, тапсырысты тексеру',
 'Нет ключа идемпотентности':'Идемпотенттік кілті жоқ','Сеанс не найден':'Сеанс табылмады','Продажа на этот сеанс закрыта':'Бұл сеансқа сату жабық','Продажа на этот сеанс закрыта.':'Бұл сеансқа сату жабық.',
 'Выберите хотя бы одно место':'Кемінде бір орын таңдаңыз','Укажите имя и фамилию':'Аты-жөніңізді көрсетіңіз','Телефон в формате +7 7XX XXX XX XX':'Телефон форматы: +7 7XX XXX XX XX','Проверьте email':'Email-ді тексеріңіз',
@@ -3894,11 +3894,15 @@ async function liveFile(inp){
 async function liveSend(token){
   if(!live.rc.file)return toast('Прикрепите файл чека',true);if(live.rc.busy)return;
   live.rc.busy=true;render();let r=null,fail=null;
+  const soft=e=>/^HTTP_5|OCR_FAILED|INTERNAL|NETWORK/.test(e.code||'')||!e.code;
   try{r=await api('POST','receipt',{token,image:live.rc.file.data})}
-  catch(e){fail=e;if(/^HTTP_5|OCR_FAILED|INTERNAL/.test(e.code||'')){try{r=await api('POST','receipt',{token,image:live.rc.file.data,manual:true});fail=null}catch(e2){fail=e2}}}
+  catch(e){fail=e;
+    for(let i=0;i<2&&fail&&soft(fail);i++){await new Promise(z=>setTimeout(z,1500));try{r=await api('POST','receipt',{token,image:live.rc.file.data});fail=null}catch(e2){fail=e2;if(e2.code==='IN_REVIEW'||e2.code==='CONFLICT'){fail=null;r=null;break}}}
+    if(fail&&soft(fail)){try{r=await api('POST','receipt',{token,image:live.rc.file.data,manual:true});fail=null}catch(e2){fail=e2}}}
   live.rc.busy=false;
   if(fail){toast(fail.message,true);await syncOrders().catch(()=>{});return render()}
   await syncOrders().catch(()=>{});await syncState().catch(()=>{});
+  if(!r){live.rc={file:null,busy:false,result:null};return render()}
   if(r.ok){live.rc={file:null,busy:false,result:null};toast('Чек принят, билеты готовы');window.scrollTo(0,0)}
   else if(r.review){live.rc={file:null,busy:false,result:null};toast('Чек отправлен администратору на проверку');window.scrollTo(0,0)}
   else{live.rc.result=r;live.rc.file=null}
@@ -4006,6 +4010,11 @@ function vStaffLive(){
 async function admLoad(){live.adm=await api('GET','admin/overview',null,true);live.adm.at=Date.now()}
 async function admDo(p){try{await p;await admLoad();await syncState().catch(()=>{})}catch(e){toast(e.message,true)}render()}
 function admSet(patch,q){if(q&&!confirm(q))return;admDo(api('POST','admin/settings',patch,true).then(()=>toast('Сохранено')))}
+async function admReread(ids){
+  if(live.rr)return;live.rr={n:0,total:ids.length,ok:0};render();
+  for(const id of ids){try{const r=await api('POST','admin/order',{orderId:id,action:'reread'},true);if(r.ok)live.rr.ok++}catch(e){}live.rr.n++;render()}
+  const d=live.rr;live.rr=null;toast(L('Прочитано: '+d.total+', принято автоматически: '+d.ok,'Оқылды: '+d.total+', автоматты қабылданды: '+d.ok));admDo(Promise.resolve());
+}
 function admAct(orderId,action,q,noteId){const note=noteId?($('#'+noteId)||{}).value||'':'';if(q&&!confirm(q))return;admDo(api('POST','admin/order',{orderId,action,note},true).then(()=>toast('Готово')))}
 async function admShow(id){try{live.img[id]=await api('GET','admin/receipt?id='+encodeURIComponent(id),null,true)}catch(e){toast(e.message,true)}render()}
 const RS={ACCEPTED:['b-green','Принят'],REJECTED:['b-red','Не принят'],REVIEW:['b-yel','На проверке']};
@@ -4022,7 +4031,7 @@ function vAdminLive(tab,id){
     const perHall=db.screenings.map(s=>{const k=S.counts(s.id);return `<tr><td>${esc(S.hall(s.hallId).name)}</td><td class="r">${paid.filter(o=>o.scrId===s.id).reduce((a,o)=>a+o.tickets.length,0)} / ${S.hall(s.hallId).seats.length}</td><td class="r"><label class="check" style="margin:0;justify-content:flex-end"><input type="checkbox" ${st.hallsOpen[s.id]?'checked':''} onchange="admSet({hallsOpen:Object.assign({},live.adm.settings.hallsOpen,{'${s.id}':this.checked})})"><span>в продаже</span></label></td></tr>`}).join('');
     b=`<div class="card mb ${st.salesOpen?'r-ok':'r-warn'}" style="text-align:left"><div class="between"><div><b style="font-size:18px">${st.salesOpen?'Продажа открыта':'Продажа закрыта'}</b><div class="small">${st.salesOpen?'Покупатели могут бронировать места и загружать чеки.':'Сайт показывает залы и надпись «скоро откроется».'}</div></div>
       <button class="btn ${st.salesOpen?'':'pri'}" onclick="admSet({salesOpen:${!st.salesOpen}},'${st.salesOpen?'Закрыть продажу?':'Открыть продажу для всех?'}')">${st.salesOpen?'Закрыть продажу':'Открыть продажу'}</button></div></div>
-    ${rev.length?`<div class="card mb r-warn" style="text-align:left"><b>Ждут ручной проверки: ${rev.length}</b><div class="mt">${rev.map(o=>`<a class="btn sm" style="margin:0 6px 6px 0" href="#/admin/order/${o.id}">${o.number} · ${money(o.total)}</a>`).join('')}</div></div>`:''}
+    ${rev.length?`<div class="card mb r-warn" style="text-align:left"><div class="between"><b>Ждут ручной проверки: ${rev.length}</b><button class="btn sm" ${live.rr?'disabled':''} onclick="admReread(${esc(JSON.stringify(rev.map(o=>o.id)))})" data-notr>${live.rr?live.rr.n+' / '+live.rr.total+'…':'Прочитать все чеки программой ещё раз'}</button></div><div class="tiny muted">Правильные чеки будут приняты сами, билеты уйдут покупателям. Остальные останутся здесь.</div><div class="mt">${rev.map(o=>`<a class="btn sm" style="margin:0 6px 6px 0" href="#/admin/order/${o.id}">${o.number} · ${money(o.total)}</a>`).join('')}</div></div>`:''}
     <div class="grid g4">${card('Продано билетов',tk.length,'вошли в зал: '+tk.filter(t=>t.status==='USED').length)}${card('Оплаченных заказов',paid.length)}${card('Сумма по чекам',money(paid.reduce((a,o)=>a+o.total,0)))}${card('Ждут оплаты',O.filter(o=>o.status==='PENDING_PAYMENT'&&!o.review).length,'истекло / отменено: '+O.filter(o=>['EXPIRED','CANCELLED'].includes(o.status)).length)}</div>
     <div class="grid g2 mt2"><div class="card"><h3 class="mb">Залы</h3><div class="tbl"><table><tr><th>Зал</th><th class="r">Продано</th><th class="r"></th></tr>${perHall}</table></div></div>
     <div class="card"><h3 class="mb">Настройки</h3>
@@ -4052,6 +4061,7 @@ function vAdminLive(tab,id){
       ${live.img[r.id]?`<img src="${live.img[r.id].image}" alt="Чек" style="max-width:340px;width:100%;border-radius:10px;border:1px solid var(--line);margin-top:10px;display:block"><details class="tiny muted mt"><summary>Что прочитала программа</summary><pre style="white-space:pre-wrap">${esc(live.img[r.id].ocr_text||'')}</pre></details>`:''}</div>`).join('')||'<p class="muted small">Чеков нет.</p>'}</div>
     <div class="card mt"><h3 class="mb">Действия</h3>
      ${o.status==='PAID'?`<p class="small" data-notr>${o.mailAt?'Письмо с билетами отправлено '+fmtTs(o.mailAt)+' → '+esc(o.customer.email):o.mailErr?'<span style="color:#fca5a5">Письмо не отправилось: '+esc(o.mailErr)+'</span>':'Письмо с билетами не отправлялось'}</p>${o.customer.email?`<button class="btn" onclick="admAct('${o.id}','mail')">Отправить билеты на почту ещё раз</button>`:''}`:''}
+     ${o.status==='PENDING_PAYMENT'&&o.review?`<p><button class="btn" ${live.rr?'disabled':''} onclick="admReread(['${o.id}'])">Прочитать чек программой ещё раз</button></p>`:''}
      ${['PENDING_PAYMENT','EXPIRED'].includes(o.status)?`<p class="small muted">Подтверждайте только если деньги видны в Kaspi.</p><button class="btn pri" onclick="admAct('${o.id}','approve','Деньги по этому заказу видны в Kaspi? Билеты будут выданы.')">Подтвердить оплату и выдать билеты</button>`:''}
      ${o.status==='PENDING_PAYMENT'&&o.review?`<div class="row mt"><input id="rjNote" placeholder="Причина (её увидит клиент)" style="flex:1;min-width:200px"><button class="btn" onclick="admAct('${o.id}','rejectReview',null,'rjNote')">Отклонить чек</button></div>`:''}
      ${o.status!=='CANCELLED'?`<div class="row mt2"><input id="cnNote" placeholder="Причина отмены" style="flex:1;min-width:200px"><button class="btn" style="border-color:#7f1d1d;color:#fca5a5" onclick="admAct('${o.id}','cancel','Отменить заказ? Билеты перестанут работать, места вернутся в продажу.','cnNote')">Отменить заказ и билеты</button></div>`:''}
