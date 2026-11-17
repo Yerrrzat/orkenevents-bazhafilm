@@ -2551,7 +2551,7 @@ function seedDb(){
     d.halls.push({id:'hall_'+(i+1),cinemaId:c.id,name:H.name||'Зал '+(i+1),vip:!!H.vip,seats,zones:H.zones,img:null,ver:1});
   });
   // One show time, four halls in parallel (date/time are DEMO — admin sets the real ones)
-  for(let i=0;i<HALLS.length;i++)d.screenings.push({id:'scr'+(i+1),hallId:'hall_'+(i+1),title:'Бажа',startsAt:'2026-11-19T19:00',price:2000,vipPrice:2000,status:i>=3?'UNAVAILABLE':'ON_SALE',holdMin:null,limit:null,demo:true});
+  for(let i=0;i<HALLS.length;i++)d.screenings.push({id:'scr'+(i+1),hallId:'hall_'+(i+1),title:'Бажа',startsAt:'2026-11-19T19:00',price:2000,vipPrice:2000,status:(LIVE&&i>=2)?'DRAFT':i>=3?'UNAVAILABLE':'ON_SALE',holdMin:null,limit:null,demo:true});
   return d;
 }
 let saveT=null;
@@ -2945,7 +2945,7 @@ const KK={
 'ЭКРАН':'ЭКРАН','Вход':'Кіру','Обычное':'Қарапайым','VIP':'VIP','Для людей с инвалидностью':'Мүгедектігі бар адамдарға',
 'Подсказка: на телефоне схему можно прокручивать пальцем и увеличивать кнопкой «+».':'Кеңес: телефонда сызбаны саусақпен жылжытып, «+» батырмасымен үлкейтуге болады.',
 'Места не выбраны':'Орын таңдалмаған','Далее':'Әрі қарай','Одно из выбранных мест только что заняли':'Таңдалған орындардың бірін жаңа ғана басқа біреу алды',
-'Изменить места':'Орындарды өзгерту','Контактные данные':'Байланыс деректері','Имя и фамилия *':'Аты-жөніңіз *','Цена в VIP-зале, ₸':'VIP-залдағы баға, ₸','Прочитать чек программой ещё раз':'Чекті бағдарламамен қайта оқу','Правильные чеки будут приняты сами, билеты уйдут покупателям. Остальные останутся здесь.':'Дұрыс чектер өздігінен қабылданады, билеттер сатып алушыларға жіберіледі. Қалғандары осында қалады.','Email — пришлём билеты *':'Email — билеттерді жібереміз *','Укажите email — на него придут билеты':'Email көрсетіңіз — билеттер соған келеді','Телефон *':'Телефон *','Email — пришлём билеты (необязательно)':'Email — билеттерді жібереміз (міндетті емес)',
+'Изменить места':'Орындарды өзгерту','Контактные данные':'Байланыс деректері','Имя и фамилия *':'Аты-жөніңіз *','Этот зал не участвует в показе.':'Бұл зал көрсетілімге қатыспайды.','Цена в VIP-зале, ₸':'VIP-залдағы баға, ₸','Прочитать чек программой ещё раз':'Чекті бағдарламамен қайта оқу','Правильные чеки будут приняты сами, билеты уйдут покупателям. Остальные останутся здесь.':'Дұрыс чектер өздігінен қабылданады, билеттер сатып алушыларға жіберіледі. Қалғандары осында қалады.','Email — пришлём билеты *':'Email — билеттерді жібереміз *','Укажите email — на него придут билеты':'Email көрсетіңіз — билеттер соған келеді','Телефон *':'Телефон *','Email — пришлём билеты (необязательно)':'Email — билеттерді жібереміз (міндетті емес)',
 'Забронировать места и проверить заказ':'Орындарды брондап, тапсырысты тексеру',
 'Нет ключа идемпотентности':'Идемпотенттік кілті жоқ','Сеанс не найден':'Сеанс табылмады','Продажа на этот сеанс закрыта':'Бұл сеансқа сату жабық','Продажа на этот сеанс закрыта.':'Бұл сеансқа сату жабық.',
 'Выберите хотя бы одно место':'Кемінде бір орын таңдаңыз','Укажите имя и фамилию':'Аты-жөніңізді көрсетіңіз','Телефон в формате +7 7XX XXX XX XX':'Телефон форматы: +7 7XX XXX XX XX','Проверьте email':'Email-ді тексеріңіз',
@@ -3274,7 +3274,7 @@ function legendHTML(){return `<div class="legend"><span><i style="background:${C
 function stepsHTML(i){return `<div class="steps">${['Места','Контакты','Проверка','Оплата','Билеты'].map((t,k)=>`<div class="${k<i?'done':k===i?'on':''}">${k+1}. ${t}</div>`).join('')}</div>`}
 function scrHeader(scr){const h=S.hall(scr.hallId),c=S.cinema(h.cinemaId);return `<div class="between"><div><a href="#/screenings" class="muted small" style="text-decoration:none">← Все залы</a><h1 style="font-size:30px;font-weight:800;margin-top:6px">«${esc(scr.title)}» · ${esc(h.name)}</h1><div class="muted small">${fmtDateL(scr.startsAt)}, ${fmtTime(scr.startsAt)} · ${esc(c.name)}</div></div></div>`}
 function vSeat(id){
-  const scr=S.scr(id);if(!scr)return `<div class="wrap" style="padding:40px 18px">Сеанс не найден</div>`;
+  const scr=S.scr(id);if(!scr||(LIVE&&scr.status==='DRAFT'))return `<div class="wrap" style="padding:40px 18px"><p>Этот зал не участвует в показе.</p><a class="btn pri mt" href="#/screenings">Выбрать зал</a></div>`;
   if(ui.selScr!==id)startSelect(id);
   const mine=myPendingOrderFor(id);
   if(!S.salesOpen(scr))return `<div class="wrap" style="padding:28px 18px">${scrHeader(scr)}<div class="card mt2">${scr.status==='UNAVAILABLE'?'Этот зал временно не работает. Выберите другой зал.':'Продажа на этот сеанс закрыта.'}</div><a class="btn mt" href="#/screenings">К выбору зала</a></div>`;
@@ -3826,7 +3826,7 @@ async function api(method,path,body,auth){
 function applyState(s){
   live.state=s;live.lastState=Date.now();if(s.now)SKEW=s.now-Date.now();
   const was=PV;PV=!(s.configured!==false&&s.salesOpen);document.body.classList.toggle('pv',PV);
-  if(s.price){db.settings.vipPrice=s.vipPrice||s.price;db.screenings.forEach(x=>{x.price=x.vipPrice=(S.hall(x.hallId).vip?(s.vipPrice||s.price):s.price);if(s.startsAt)x.startsAt=s.startsAt;x.status=(s.hallsOpen&&s.hallsOpen[x.id])?'ON_SALE':'UNAVAILABLE'});db.settings.holdMin=s.holdMin;db.settings.maxSeats=s.maxSeats}
+  if(s.price){db.settings.vipPrice=s.vipPrice||s.price;db.screenings.forEach(x=>{x.price=x.vipPrice=(S.hall(x.hallId).vip?(s.vipPrice||s.price):s.price);if(s.startsAt)x.startsAt=s.startsAt;x.status=(s.hallsHidden&&s.hallsHidden[x.id])?'DRAFT':(s.hallsOpen&&s.hallsOpen[x.id])?'ON_SALE':'UNAVAILABLE'});db.settings.holdMin=s.holdMin;db.settings.maxSeats=s.maxSeats}
   const Lk={};for(const scr in (s.taken||{}))for(const seat in s.taken[scr])Lk[scr+'|'+seat]={orderId:'_',status:s.taken[scr][seat]==='S'?'SOLD':'HELD',exp:now()+864e5};
   for(const o of db.orders)if(o.status==='PENDING_PAYMENT'||o.status==='PAID')for(const it of o.items){const k=o.scrId+'|'+it.seatId;if(Lk[k])Lk[k].orderId=o.id}
   db.locks=Lk;return was!==PV;
@@ -4030,7 +4030,7 @@ function vAdminLive(tab,id){
   let b='';
   if(tab==='main'){
     const paid=O.filter(o=>o.status==='PAID'),tk=paid.flatMap(o=>o.tickets),card=(t,v,s)=>`<div class="card"><div class="muted small">${t}</div><div class="stat mt">${v}</div>${s?`<div class="tiny muted">${s}</div>`:''}</div>`;
-    const perHall=db.screenings.map(s=>{const k=S.counts(s.id);return `<tr><td>${esc(S.hall(s.hallId).name)}</td><td class="r">${paid.filter(o=>o.scrId===s.id).reduce((a,o)=>a+o.tickets.length,0)} / ${S.hall(s.hallId).seats.length}</td><td class="r"><label class="check" style="margin:0;justify-content:flex-end"><input type="checkbox" ${st.hallsOpen[s.id]?'checked':''} onchange="admSet({hallsOpen:Object.assign({},live.adm.settings.hallsOpen,{'${s.id}':this.checked})})"><span>в продаже</span></label></td></tr>`}).join('');
+    const perHall=db.screenings.map(s=>{const k=S.counts(s.id);return `<tr><td>${esc(S.hall(s.hallId).name)}</td><td class="r">${paid.filter(o=>o.scrId===s.id).reduce((a,o)=>a+o.tickets.length,0)} / ${S.hall(s.hallId).seats.length}</td><td class="r"><label class="check" style="margin:0;justify-content:flex-end"><input type="checkbox" ${!(st.hallsHidden||{})[s.id]?'checked':''} onchange="admSet({hallsHidden:{'${s.id}':!this.checked}})"><span>на сайте</span></label><label class="check" style="margin:0;justify-content:flex-end"><input type="checkbox" ${st.hallsOpen[s.id]?'checked':''} onchange="admSet({hallsOpen:Object.assign({},live.adm.settings.hallsOpen,{'${s.id}':this.checked})})"><span>в продаже</span></label></td></tr>`}).join('');
     b=`<div class="card mb ${st.salesOpen?'r-ok':'r-warn'}" style="text-align:left"><div class="between"><div><b style="font-size:18px">${st.salesOpen?'Продажа открыта':'Продажа закрыта'}</b><div class="small">${st.salesOpen?'Покупатели могут бронировать места и загружать чеки.':'Сайт показывает залы и надпись «скоро откроется».'}</div></div>
       <button class="btn ${st.salesOpen?'':'pri'}" onclick="admSet({salesOpen:${!st.salesOpen}},'${st.salesOpen?'Закрыть продажу?':'Открыть продажу для всех?'}')">${st.salesOpen?'Закрыть продажу':'Открыть продажу'}</button></div></div>
     ${rev.length?`<div class="card mb r-warn" style="text-align:left"><div class="between"><b>Ждут ручной проверки: ${rev.length}</b><button class="btn sm" ${live.rr?'disabled':''} onclick="admReread(${esc(JSON.stringify(rev.map(o=>o.id)))})" data-notr>${live.rr?live.rr.n+' / '+live.rr.total+'…':'Прочитать все чеки программой ещё раз'}</button></div><div class="tiny muted">Правильные чеки будут приняты сами, билеты уйдут покупателям. Остальные останутся здесь.</div><div class="mt">${rev.map(o=>`<a class="btn sm" style="margin:0 6px 6px 0" href="#/admin/order/${o.id}">${o.number} · ${money(o.total)}</a>`).join('')}</div></div>`:''}

@@ -9,6 +9,7 @@ import { mailConfigured, sendMail, ticketLetter } from './mail.mjs';
 export const DEFAULTS = {
   salesOpen: false,                                  // master switch: false = site only shows halls
   hallsOpen: { scr1: true, scr2: true, scr3: true, scr4: false, scr5: false },
+  hallsHidden: { scr1: false, scr2: false, scr3: true, scr4: true, scr5: true },   // hidden = not shown on the site at all (tickets already sold there still work)
   price: 2000, vipPrice: 5000, holdMin: 15, maxSeats: 10,   // vipPrice: a seat in the VIP hall
   startsAt: '2026-11-19T19:00',
   kaspi: '+7 775 912 0048',                          // number buyers transfer to
@@ -36,7 +37,7 @@ export function normPhone(s) {
 export async function getSettings() {
   const r = await q(`SELECT value FROM settings WHERE key='main'`);
   const v = r[0]?.value || {};
-  return { ...DEFAULTS, ...v, hallsOpen: { ...DEFAULTS.hallsOpen, ...(v.hallsOpen || {}) } };
+  return { ...DEFAULTS, ...v, hallsOpen: { ...DEFAULTS.hallsOpen, ...(v.hallsOpen || {}) }, hallsHidden: { ...DEFAULTS.hallsHidden, ...(v.hallsHidden || {}) } };
 }
 export async function saveSettings(patch, actor, now) {
   const cur = await getSettings(), next = { ...cur };
@@ -47,6 +48,7 @@ export async function saveSettings(patch, actor, now) {
   if (!(next.holdMin >= 5 && next.holdMin <= 120)) throw new ApiError(400, 'VALIDATION_ERROR', 'Время брони: от 5 до 120 минут');
   if (!(next.maxSeats >= 1 && next.maxSeats <= 20)) throw new ApiError(400, 'VALIDATION_ERROR', 'Мест в заказе: от 1 до 20');
   next.salesOpen = !!next.salesOpen;
+  next.hallsHidden = { ...cur.hallsHidden, ...(patch.hallsHidden || {}) };
   await q(`INSERT INTO settings(key,value) VALUES('main',$1::jsonb) ON CONFLICT(key) DO UPDATE SET value=$1::jsonb`, [J(next)]);
   await audit(now, actor, 'settings.update', 'settings', Object.keys(patch).join(','));
   return next;
@@ -70,7 +72,7 @@ export async function publicState(now) {
   const rows = await q(`SELECT scr_id, seat_id, status FROM seat_locks WHERE status='SOLD' OR exp>$1`, [now]);
   const taken = {};
   for (const r of rows) (taken[r.scr_id] ||= {})[r.seat_id] = r.status === 'SOLD' ? 'S' : 'H';
-  return { configured: true, now, salesOpen: s.salesOpen, hallsOpen: s.hallsOpen, price: s.price, vipPrice: s.vipPrice, holdMin: s.holdMin, maxSeats: s.maxSeats, startsAt: s.startsAt, kaspi: s.kaspi, recipient: s.recipient, taken };
+  return { configured: true, now, salesOpen: s.salesOpen, hallsOpen: s.hallsOpen, hallsHidden: s.hallsHidden, price: s.price, vipPrice: s.vipPrice, holdMin: s.holdMin, maxSeats: s.maxSeats, startsAt: s.startsAt, kaspi: s.kaspi, recipient: s.recipient, taken };
 }
 
 function shapeOrder(o, tickets, receipt, now) {
@@ -112,7 +114,7 @@ export async function createOrder(inp, now, ip) {
   if (again.length) return again[0];
   const scr = SCREENINGS[inp.scrId];
   if (!scr) throw new ApiError(404, 'NOT_FOUND', 'Сеанс не найден');
-  if (!s.salesOpen || !s.hallsOpen[inp.scrId] || new Date(s.startsAt + ':00+05:00').getTime() <= now) throw new ApiError(409, 'SALES_CLOSED', 'Продажа на этот сеанс закрыта');
+  if (!s.salesOpen || !s.hallsOpen[inp.scrId] || s.hallsHidden[inp.scrId] || new Date(s.startsAt + ':00+05:00').getTime() <= now) throw new ApiError(409, 'SALES_CLOSED', 'Продажа на этот сеанс закрыта');
   const seatIds = [...new Set(Array.isArray(inp.seatIds) ? inp.seatIds.map(String) : [])];
   if (!seatIds.length) throw new ApiError(400, 'VALIDATION_ERROR', 'Выберите хотя бы одно место');
   if (seatIds.length > s.maxSeats) throw new ApiError(400, 'VALIDATION_ERROR', `Не больше ${s.maxSeats} мест в одном заказе`);

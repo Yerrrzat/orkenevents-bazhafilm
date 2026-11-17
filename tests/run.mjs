@@ -21,7 +21,10 @@ const fake = (r) => async () => ({ number: '111111111111111111', amount: 2000, p
 const IMG = 'data:image/jpeg;base64,AAAA';
 
 ok('sales closed by default', (await code(() => core.createOrder(base(), T0, '1'))) === 'SALES_CLOSED');
-await core.saveSettings({ salesOpen: true }, 'test', T0);
+{ const d = (await core.publicState(T0)).hallsHidden;
+  ok('halls 3, 4, VIP hidden from the site by default; 1 and 2 shown', d.scr3 && d.scr4 && d.scr5 && !d.scr1 && !d.scr2, JSON.stringify(d)); }
+// the hall logic below is tested with every hall visible
+await core.saveSettings({ salesOpen: true, hallsHidden: { scr3: false, scr4: false, scr5: false } }, 'test', T0);
 ok('hall 4 closed', (await code(() => core.createOrder(base({ scrId: 'scr4', seatIds: ['h4r1s1'] }), T0, '1'))) === 'SALES_CLOSED');
 ok('unknown seat refused', (await code(() => core.createOrder(base({ seatIds: ['h1r99s1'] }), T0, '1'))) === 'VALIDATION_ERROR');
 ok('bad phone refused', (await code(() => core.createOrder(base({ phone: '123' }), T0, '1'))) === 'VALIDATION_ERROR');
@@ -185,6 +188,20 @@ ok('10 scanners at once: exactly 1 accepts', par.filter((x) => x.res === 'ACCEPT
   ok('letter names the VIP hall', box.length === 1 && box[0].text.includes('Астана — VIP-зал') && !/зал VIP|VIP-зал-зал/.test(box[0].text));
   useMailer(null);
   await core.saveSettings({ hallsOpen: st0.hallsOpen }, 'admin', t + 3000);
+}
+// halls 3, 4 and VIP are hidden from the site; hidden halls cannot be bought even if marked "on sale"
+{
+  const t = late + 3500000;
+  await core.saveSettings({ hallsHidden: { scr3: true, scr4: true, scr5: true } }, 'admin', t - 1);
+  const st = await core.publicState(t);
+  await core.saveSettings({ hallsOpen: { ...st.hallsOpen, scr3: true } }, 'admin', t);
+  let e3 = null; try { await core.createOrder(base({ idem: 'hidden-hall-order', scrId: 'scr3', seatIds: ['h3r8s1'], phone: '87014440001' }), t, '6.6.6.1'); } catch (e) { e3 = e.code; }
+  ok('hidden hall cannot be bought', e3 === 'SALES_CLOSED', e3);
+  await core.saveSettings({ hallsHidden: { scr3: false } }, 'admin', t + 1);
+  const st2 = await core.publicState(t + 2);
+  const o3 = await core.createOrder(base({ idem: 'shown-again-order', scrId: 'scr3', seatIds: ['h3r8s1'], phone: '87014440002' }), t + 3, '6.6.6.2');
+  ok('admin can show a hall again (others stay hidden)', !st2.hallsHidden.scr3 && st2.hallsHidden.scr4 && st2.hallsHidden.scr5 && o3.status === 'PENDING_PAYMENT');
+  await core.saveSettings({ hallsHidden: { scr3: true }, hallsOpen: st.hallsOpen }, 'admin', t + 4);
 }
 // fake receipt found later → admin cancels, ticket stops working, seat returns
 const E = await core.createOrder(base({ seatIds: ['h1r7s1'], phone: '87010000012' }), late, '12');
