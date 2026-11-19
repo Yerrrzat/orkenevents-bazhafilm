@@ -65,6 +65,7 @@ export default async function handler(req, context) {
 
     if (req.method === 'GET' && route === 'admin/overview') { need(req, 'admin'); return json(200, await core.adminOverview(now)); }
     if (req.method === 'GET' && route === 'admin/receipt') { need(req, 'admin'); return json(200, await core.receiptImage(url.searchParams.get('id'))); }
+    if (req.method === 'POST' && route === 'admin/tickets/use-all') { need(req, 'admin'); return json(200, await core.markAllUsed('admin', now)); }
     if (req.method === 'POST' && route === 'admin/order') {
       need(req, 'admin');
       if (body.action === 'mail') { const res = await core.mailTickets(body.orderId, now, site, true); if (res !== 'SENT') throw new core.ApiError(409, 'MAIL_' + res, res === 'OFF' ? 'Почта не настроена' : res === 'SKIP' ? 'Заказ не оплачен или без email' : 'Письмо не отправилось'); return json(200, { ok: true }); }

@@ -203,6 +203,16 @@ ok('10 scanners at once: exactly 1 accepts', par.filter((x) => x.res === 'ACCEPT
   ok('admin can show a hall again (others stay hidden)', !st2.hallsHidden.scr3 && st2.hallsHidden.scr4 && st2.hallsHidden.scr5 && o3.status === 'PENDING_PAYMENT');
   await core.saveSettings({ hallsHidden: { scr3: true }, hallsOpen: st.hallsOpen }, 'admin', t + 4);
 }
+// after the show: mark every remaining ticket as used
+{
+  const t = late + 4500000;
+  const ov0 = await core.adminOverview(t), all0 = ov0.orders.flatMap((o) => o.tickets.map((k) => ({ o: o.status, s: k.status })));
+  const valid0 = all0.filter((x) => x.s === 'VALID').length, cancelled0 = all0.filter((x) => x.s === 'CANCELLED').length, used0 = all0.filter((x) => x.s === 'USED').length;
+  const r = await core.markAllUsed('admin', t);
+  const all1 = (await core.adminOverview(t + 1)).orders.flatMap((o) => o.tickets);
+  ok('mark all used: valid → used, cancelled untouched', valid0 > 0 && r.count === valid0 && all1.filter((k) => k.status === 'VALID').length === 0 && all1.filter((k) => k.status === 'CANCELLED').length === cancelled0 && all1.filter((k) => k.status === 'USED').length === used0 + valid0, JSON.stringify([valid0, r.count, cancelled0, used0]));
+  ok('mark all used twice: nothing more to change', (await core.markAllUsed('admin', t + 2)).count === 0);
+}
 // fake receipt found later → admin cancels, ticket stops working, seat returns
 const E = await core.createOrder(base({ seatIds: ['h1r7s1'], phone: '87010000012' }), late, '12');
 const ePaid = (await core.submitReceipt(E.token, IMG, late + 1000, fake({ number: '444444444444444444', paidAt: late }))).order;

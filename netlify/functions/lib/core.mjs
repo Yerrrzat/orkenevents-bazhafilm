@@ -347,6 +347,13 @@ export async function mailTickets(orderId, now, site, force = false) {
   } catch (e) { console.error('mail failed', e); return 'FAILED'; }
 }
 
+/** Admin, after the show: every ticket not scanned at the entrance is marked as used. Cancelled tickets stay cancelled. */
+export async function markAllUsed(actor, now) {
+  const r = await q(`UPDATE tickets SET status='USED', checked_at=$1, checked_by=$2 WHERE status='VALID' AND order_id IN (SELECT id FROM orders WHERE status='PAID') RETURNING id`, [now, 'all-by-admin']);
+  await audit(now, actor, 'tickets.markAllUsed', '', `${r.length} tickets`);
+  return { count: r.length };
+}
+
 /** Entrance check. A ticket is accepted exactly once: the UPDATE only matches while it is still VALID. */
 export async function validateTicket(inp, staff, now) {
   const s = String(inp.qr || '').trim();
